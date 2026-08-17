@@ -1,0 +1,8 @@
+<?xml version="1.0"?>
+<launch>
+  <!-- Time-series PID diagnostics.  Each topic is std_msgs/Float64, so rqt_plot
+       draws a conventional error-versus-time curve. -->
+  <node pkg="rqt_plot" type="rqt_plot" name="aquaflow_tracking_error_plot"
+        output="screen"
+        args="/aquaflow/tracking_error/x_body_m/data /aquaflow/tracking_error/y_body_m/data /aquaflow/tracking_error/yaw_rad/data /aquaflow/tracking_error/xy_norm_m/data"/>
+</launch>

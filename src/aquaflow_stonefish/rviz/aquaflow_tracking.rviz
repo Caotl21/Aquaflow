@@ -1,0 +1,311 @@
+Panels:
+  - Class: rviz/Displays
+    Help Height: 70
+    Name: Displays
+    Property Tree Widget:
+      Expanded:
+        - /Left Camera1
+      Splitter Ratio: 0.5
+    Tree Height: 511
+  - Class: rviz/Views
+    Expanded:
+      - /Current View1
+    Name: Views
+    Splitter Ratio: 0.5
+Preferences:
+  PromptSaveOnExit: true
+Toolbars:
+  toolButtonStyle: 2
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Alpha: 0.3499999940395355
+      Cell Size: 1
+      Class: rviz/Grid
+      Color: 120; 120; 120
+      Enabled: true
+      Line Style:
+        Line Width: 0.029999999329447746
+        Value: Lines
+      Name: World Grid
+      Normal Cell Count: 0
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+      Plane: XY
+      Plane Cell Count: 20
+      Reference Frame: <Fixed Frame>
+      Value: true
+    - Class: rviz/TF
+      Enabled: true
+      Frame Timeout: 15
+      Frames:
+        All Enabled: true
+        bluerov2/base_link:
+          Value: true
+        world_ned:
+          Value: true
+      Marker Alpha: 1
+      Marker Scale: 0.3499999940395355
+      Name: TF
+      Show Arrows: true
+      Show Axes: true
+      Show Names: true
+      Tree:
+        world_ned:
+          bluerov2/base_link:
+            {}
+      Update Interval: 0
+      Value: true
+    - Alpha: 1
+      Class: rviz/RobotModel
+      Collision Enabled: false
+      Description Source: Parameter
+      Enabled: true
+      Links:
+        All Links Enabled: true
+        Expand Tree: false
+      Name: BlueROV2 Robot Model
+      Robot Description: robot_description
+      TF Prefix: bluerov2
+      Update Interval: 0
+      Value: true
+      Visual Enabled: true
+    - Alpha: 1
+      Buffer Length: 1
+      Class: rviz/Path
+      Color: 0; 255; 0
+      Enabled: true
+      Head Diameter: 0.30000001192092896
+      Head Length: 0.20000000298023224
+      Length: 0.30000001192092896
+      Line Style: Lines
+      Line Width: 0.05999999865889549
+      Name: Nominal Path
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+      Pose Color: 255; 85; 255
+      Pose Style: None
+      Queue Size: 10
+      Radius: 0.029999999329447746
+      Shaft Diameter: 0.10000000149011612
+      Shaft Length: 0.10000000149011612
+      Topic: /aquaflow/nominal_path
+      Unreliable: false
+      Value: true
+    - Alpha: 1
+      Buffer Length: 1
+      Class: rviz/Path
+      Color: 255; 40; 40
+      Enabled: true
+      Head Diameter: 0.30000001192092896
+      Head Length: 0.20000000298023224
+      Length: 0.30000001192092896
+      Line Style: Lines
+      Line Width: 0.11999999731779099
+      Name: Actual Path
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+      Pose Color: 255; 85; 255
+      Pose Style: None
+      Queue Size: 10
+      Radius: 0.029999999329447746
+      Shaft Diameter: 0.10000000149011612
+      Shaft Length: 0.10000000149011612
+      Topic: /aquaflow/actual_path
+      Unreliable: false
+      Value: true
+    - Alpha: 1
+      Buffer Length: 1
+      Class: rviz/Path
+      Color: 0; 170; 255
+      Enabled: true
+      Head Diameter: 0.30000001192092896
+      Head Length: 0.20000000298023224
+      Length: 0.30000001192092896
+      Line Style: Lines
+      Line Width: 0.08999999612569809
+      Name: Privileged Teacher Path
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+      Pose Color: 255; 85; 255
+      Pose Style: None
+      Queue Size: 10
+      Radius: 0.029999999329447746
+      Shaft Diameter: 0.10000000149011612
+      Shaft Length: 0.10000000149011612
+      Topic: /aquaflow/teacher_reference
+      Unreliable: false
+      Value: true
+    - Alpha: 1
+      Buffer Length: 1
+      Class: rviz/Path
+      Color: 180; 0; 255
+      Enabled: true
+      Line Style: Lines
+      Line Width: 0.0699999988079071
+      Name: Global A* Teacher Path
+      Pose Style: None
+      Queue Size: 10
+      Topic: /aquaflow/teacher_global_path
+      Unreliable: false
+      Value: true
+    - Alpha: 0.75
+      Class: rviz/Map
+      Color Scheme: costmap
+      Draw Behind: false
+      Enabled: false
+      Name: ESDF Costmap (costmap_2d style)
+      Topic: /aquaflow/esdf_costmap
+      Use Timestamp: false
+      Value: true
+    - Class: rviz/MarkerArray
+      Enabled: true
+      Marker Topic: /aquaflow/privileged_map
+      Name: Privileged Pool and Obstacles
+      Namespaces:
+        aquaflow_privileged_map: true
+        aquaflow_semantic_cost: true
+      Queue Size: 100
+      Value: true
+    - Class: rviz/MarkerArray
+      Enabled: false
+      Marker Topic: /aquaflow/teacher_global_points
+      Name: Global A* Path Points
+      Namespaces:
+        aquaflow_teacher_global: true
+      Queue Size: 10
+      Value: true
+    - Class: rviz/MarkerArray
+      Enabled: true
+      Marker Topic: /aquaflow/teacher_local_points
+      Name: Local Planner Selected Points
+      Namespaces:
+        aquaflow_teacher_local: true
+      Queue Size: 10
+      Value: true
+    - Class: rviz/MarkerArray
+      Enabled: true
+      Marker Topic: /aquaflow/tracking_error_markers
+      Name: Tracking XY and Yaw Error
+      Namespaces:
+        aquaflow_tracking_error: true
+      Queue Size: 10
+      Value: true
+    - Class: rviz/MarkerArray
+      Enabled: true
+      Marker Topic: /aquaflow/actual_path_points
+      Name: Actual Trajectory Samples
+      Namespaces:
+        aquaflow_actual_path: true
+      Queue Size: 10
+      Value: true
+    - Angle Tolerance: 0.05000000074505806
+      Class: rviz/Odometry
+      Covariance:
+        Orientation:
+          Alpha: 0.5
+          Color: 255; 255; 127
+          Color Style: Unique
+          Frame: Local
+          Offset: 1
+          Scale: 1
+          Value: true
+        Position:
+          Alpha: 0.30000001192092896
+          Color: 204; 51; 204
+          Scale: 1
+          Value: true
+        Value: true
+      Enabled: true
+      Keep: 1
+      Name: Current Odometry
+      Position Tolerance: 0.05000000074505806
+      Queue Size: 10
+      Shape:
+        Alpha: 0.800000011920929
+        Axes Length: 0.4000000059604645
+        Axes Radius: 0.029999999329447746
+        Color: 255; 25; 0
+        Head Length: 0.15000000596046448
+        Head Radius: 0.05999999865889549
+        Shaft Length: 0.30000001192092896
+        Shaft Radius: 0.029999999329447746
+        Value: Arrow
+      Topic: /bluerov2/odometry
+      Unreliable: false
+      Value: true
+    - Class: rviz/Image
+      Enabled: true
+      Image Topic: /bluerov2/left/image_color
+      Max Value: 1
+      Median window: 5
+      Min Value: 0
+      Name: Left Camera
+      Normalize Range: true
+      Queue Size: 2
+      Transport Hint: raw
+      Unreliable: false
+      Value: true
+  Enabled: true
+  Global Options:
+    Background Color: 48; 48; 48
+    Default Light: true
+    Fixed Frame: world_ned
+    Frame Rate: 30
+  Name: root
+  Tools:
+    - Class: rviz/Interact
+      Hide Inactive Objects: true
+    - Class: rviz/MoveCamera
+    - Class: rviz/Select
+    - Class: rviz/FocusCamera
+    - Class: rviz/SetGoal
+      Topic: /move_base_simple/goal
+  Value: true
+  Views:
+    Current:
+      Class: rviz/Orbit
+      Distance: 7.524331569671631
+      Enable Stereo Rendering:
+        Stereo Eye Separation: 0.05999999865889549
+        Stereo Focal Distance: 1
+        Swap Stereo Eyes: false
+        Value: false
+      Field of View: 0.7853981852531433
+      Focal Point:
+        X: -7.8177809715271
+        Y: 1.5065404176712036
+        Z: 4.783782958984375
+      Focal Shape Fixed Size: true
+      Focal Shape Size: 0.05000000074505806
+      # world_ned is z-down. Let Orbit use the NED vertical convention so its
+      # camera can move continuously from top to side views.
+      Invert Z Axis: true
+      Name: Current View
+      Near Clip Distance: 0.009999999776482582
+      Pitch: 1.244796633720398
+      Target Frame: <Fixed Frame>
+      Yaw: 2.690006971359253
+    Saved: ~
+Window Geometry:
+  Displays:
+    collapsed: false
+  Height: 1531
+  Hide Left Dock: false
+  Hide Right Dock: false
+  Left Camera:
+    collapsed: false
+  QMainWindow State: 000000ff00000000fd0000000100000000000002b1000005a5fc0200000003fb00000016004c006500660074002000430061006d006500720061010000003b0000017e0000001600fffffffb000000100044006900730070006c00610079007301000001bf00000280000000c700fffffffb0000000a0056006900650077007301000004450000019b000000a000ffffff00000707000005a500000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
+  Views:
+    collapsed: false
+  Width: 2494
+  X: 66
+  Y: 32

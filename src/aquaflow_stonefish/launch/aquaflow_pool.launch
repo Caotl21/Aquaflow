@@ -1,0 +1,34 @@
+<?xml version="1.0"?>
+<launch>
+  <!--
+    Supported scenes:
+      empty_pool       -> aquaflow_empty_pool.scn
+      single_obstacle  -> aquaflow_single_obstacle.scn
+      random_pillars   -> aquaflow_random_pillars.scn
+      random_pillars + vehicle_model:=bluerov2 -> BlueROV2 variant
+
+    The dictionary lookup intentionally makes roslaunch fail for an unknown
+    scene name instead of silently selecting a fallback environment.
+  -->
+  <arg name="scene" default="empty_pool"
+       doc="AquaFlow course: empty_pool, single_obstacle or random_pillars"/>
+  <arg name="simulation_rate" default="100.0"/>
+  <arg name="vehicle_model" default="bluerov2"
+       doc="Robot to include in random_pillars: bluerov2 or bricsbot"/>
+  <arg name="graphics_resolution" default="1200 800"/>
+  <arg name="graphics_quality" default="medium"
+       doc="Stonefish graphics quality: low, medium or high"/>
+
+  <arg name="scenario_file"
+       value="$(eval {'empty_pool': 'aquaflow_empty_pool.scn', 'single_obstacle': 'aquaflow_single_obstacle.scn', 'random_pillars': {'bluerov2': 'aquaflow_random_pillars_bluerov2.scn', 'bricsbot': 'aquaflow_random_pillars.scn'}[arg('vehicle_model')]}[arg('scene')])"/>
+
+  <include file="$(find stonefish_ros)/launch/simulator.launch">
+    <arg name="simulation_data"
+         value="$(find aquaflow_stonefish)/data"/>
+    <arg name="scenario_description"
+         value="$(find aquaflow_stonefish)/scenarios/$(arg scenario_file)"/>
+    <arg name="simulation_rate" value="$(arg simulation_rate)"/>
+    <arg name="graphics_resolution" value="$(arg graphics_resolution)"/>
+    <arg name="graphics_quality" value="$(arg graphics_quality)"/>
+  </include>
+</launch>

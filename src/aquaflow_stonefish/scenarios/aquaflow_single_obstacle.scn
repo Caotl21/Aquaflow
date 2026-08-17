@@ -1,0 +1,108 @@
+<?xml version="1.0"?>
+<!--
+  AquaFlow single-obstacle course for Stonefish 1.6.
+
+  This scene intentionally matches aquaflow_empty_pool.scn except for one
+  vertical cylinder centred on the nominal +x path. NED coordinates are used:
+  the surface is z=0 and the pool floor is z=4 m.
+-->
+<scenario>
+	<environment>
+		<ned latitude="56.136459" longitude="-2.706819"/>
+		<ocean>
+			<water density="1031.0" jerlov="0.15"/>
+			<waves height="0.0"/>
+			<particles enabled="false"/>
+			<current type="uniform">
+				<velocity xyz="0.0 0.0 0.0"/>
+			</current>
+		</ocean>
+		<atmosphere>
+			<sun azimuth="45.0" elevation="60.0"/>
+		</atmosphere>
+	</environment>
+
+	<!-- Keep these names compatible with bluerov2_reference.scn. -->
+	<materials>
+		<material name="Neutral" density="1000.0" restitution="0.1"/>
+		<material name="Rock" density="3000.0" restitution="0.2"/>
+		<material name="Fiberglass" density="1500.0" restitution="0.3"/>
+		<material name="Aluminium" density="2710.0" restitution="0.5"/>
+		<friction_table>
+			<friction material1="Neutral" material2="Neutral" static="0.5" dynamic="0.2"/>
+			<friction material1="Neutral" material2="Rock" static="0.2" dynamic="0.1"/>
+			<friction material1="Neutral" material2="Fiberglass" static="0.5" dynamic="0.2"/>
+			<friction material1="Neutral" material2="Aluminium" static="0.1" dynamic="0.02"/>
+			<friction material1="Rock" material2="Rock" static="0.9" dynamic="0.7"/>
+			<friction material1="Rock" material2="Fiberglass" static="0.6" dynamic="0.4"/>
+			<friction material1="Rock" material2="Aluminium" static="0.6" dynamic="0.3"/>
+			<friction material1="Fiberglass" material2="Fiberglass" static="0.5" dynamic="0.2"/>
+			<friction material1="Fiberglass" material2="Aluminium" static="0.5" dynamic="0.2"/>
+			<friction material1="Aluminium" material2="Aluminium" static="0.8" dynamic="0.5"/>
+		</friction_table>
+	</materials>
+
+	<looks>
+		<!-- Robot looks required by the included BlueROV2 description. -->
+		<look name="black" gray="0.05" roughness="0.2"/>
+		<look name="yellow" rgb="1.0 0.9 0.0" roughness="0.3"/>
+		<look name="gray" gray="0.5" roughness="0.4" metalness="0.5"/>
+
+		<look name="pool_floor" rgb="0.64 0.72 0.70" roughness="0.95"/>
+		<look name="pool_wall" rgb="0.82 0.90 0.92" roughness="0.85"/>
+		<look name="obstacle_orange" rgb="1.0 0.22 0.02" roughness="0.55"/>
+	</looks>
+
+	<!-- 14 m x 8 m pool, 4 m water depth. -->
+	<static name="PoolFloor" type="box">
+		<dimensions xyz="14.0 8.0 0.2"/>
+		<material name="Rock"/>
+		<look name="pool_floor"/>
+		<world_transform xyz="0.0 0.0 4.1" rpy="0.0 0.0 0.0"/>
+	</static>
+
+	<static name="PoolWallStart" type="box">
+		<dimensions xyz="0.2 8.4 4.0"/>
+		<material name="Rock"/>
+		<look name="pool_wall"/>
+		<world_transform xyz="-7.1 0.0 2.0" rpy="0.0 0.0 0.0"/>
+	</static>
+
+	<static name="PoolWallEnd" type="box">
+		<dimensions xyz="0.2 8.4 4.0"/>
+		<material name="Rock"/>
+		<look name="pool_wall"/>
+		<world_transform xyz="7.1 0.0 2.0" rpy="0.0 0.0 0.0"/>
+	</static>
+
+	<static name="PoolWallLeft" type="box">
+		<dimensions xyz="14.0 0.2 4.0"/>
+		<material name="Rock"/>
+		<look name="pool_wall"/>
+		<world_transform xyz="0.0 -4.1 2.0" rpy="0.0 0.0 0.0"/>
+	</static>
+
+	<static name="PoolWallRight" type="box">
+		<dimensions xyz="14.0 0.2 4.0"/>
+		<material name="Rock"/>
+		<look name="pool_wall"/>
+		<world_transform xyz="0.0 4.1 2.0" rpy="0.0 0.0 0.0"/>
+	</static>
+
+	<!--
+	  Course A obstacle: radius 0.45 m, spanning the full water column and
+	  centred 5 m in front of the initial robot position.
+	-->
+	<static name="CenterObstacle" type="cylinder">
+		<dimensions radius="0.45" height="4.0"/>
+		<material name="Fiberglass"/>
+		<look name="obstacle_orange"/>
+		<world_transform xyz="0.0 0.0 2.0" rpy="0.0 0.0 0.0"/>
+	</static>
+
+	<include file="$(find aquaflow_stonefish)/scenarios/bluerov2_reference.scn">
+		<arg name="vehicle_name" value="bluerov2"/>
+		<arg name="position" value="-5.0 0.0 0.0"/>
+		<arg name="orientation" value="0.0 0.0 0.0"/>
+	</include>
+</scenario>

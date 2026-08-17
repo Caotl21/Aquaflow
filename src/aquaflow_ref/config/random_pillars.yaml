@@ -1,0 +1,72 @@
+# Fixed privileged map matching aquaflow_random_pillars.scn.
+# Values are world_ned x/y coordinates and cylinder radii in metres.
+# Pillar diameters are capped at 0.60 m and span down to 0.015 m.
+robot_radius: 0.2
+safety_margin: 0.2
+corner_radius: 0.35
+local_spacing: 0.20
+pool_y_min: -3.8
+pool_y_max: 3.8
+pool_x_min: -7.0
+pool_x_max: 7.0
+pool_depth: 4.0
+grid_resolution: 0.10
+# Same exponential decay parameter used by costmap_2d-style inflation and
+# by both the A* traversal cost and RViz heatmap colors.
+cost_scaling_factor: 3.0
+heatmap_max_clearance: 2.0
+# Stonefish NED: pool floor's top surface is z=4.0 m. Keep the ESDF plane
+# just above it to avoid z-fighting while rendering it on the pool bottom.
+heatmap_z: 3.98
+heatmap_alpha: 0.48
+corner_radius: 0.35
+# Keep the legacy rainbow heatmap off; the semantic MarkerArray palette below
+# is the primary RViz visualization.
+show_marker_heatmap: false
+show_semantic_costmap: true
+show_pool_walls: false
+visual_cost_range: 0.80
+global_goal: {x: 5.0, y: -2.0, z: 1.0}
+goal_depth: 1.0
+obstacles:
+  - {name: PillarD0600A, x: -2.9, y: 2.2, radius: 0.2000}
+  - {name: PillarD0560, x: -1.8, y: -1.8, radius: 0.1800}
+  - {name: PillarD0600, x: -0.4, y: 1.0, radius: 0.2000}
+  - {name: PillarD0500, x: 0.8, y: -2.7, radius: 0.1900}
+  - {name: PillarD0400, x: 1.6, y: 2.4, radius: 0.1600}
+  - {name: PillarD0300, x: 2.8, y: -0.8, radius: 0.1500}
+  - {name: PillarD0250, x: 3.5, y: 1.4, radius: 0.1250}
+  - {name: PillarD0200, x: 4.5, y: -2.4, radius: 0.1000}
+  - {name: PillarD0150, x: 5.3, y: 0.5, radius: 0.0750}
+  - {name: PillarD0100, x: 0.0, y: 3.1, radius: 0.0500}
+  - {name: PillarD0075, x: 4.0, y: 2.8, radius: 0.0375}
+  - {name: PillarD0050, x: 5.8, y: -1.0, radius: 0.0250}
+  - {name: PillarD0580, x: -4.0, y: -2.8, radius: 0.2200}
+  - {name: PillarD0540, x: -3.5, y: 0.2, radius: 0.1800}
+  - {name: PillarD0550, x: -0.8, y: -0.2, radius: 0.1550}
+  - {name: PillarD0450, x: 0.5, y: 1.9, radius: 0.1950}
+  - {name: PillarD0350, x: 1.8, y: -1.7, radius: 0.1750}
+  - {name: PillarD0280, x: 2.4, y: 2.8, radius: 0.1400}
+  - {name: PillarD0220, x: 3.2, y: -3.1, radius: 0.1100}
+  - {name: PillarD0180, x: 4.7, y: 1.8, radius: 0.0900}
+  - {name: PillarD0125, x: 5.7, y: 2.5, radius: 0.0625}
+  - {name: PillarD0090, x: -0.2, y: -3.3, radius: 0.0450}
+  - {name: PillarD0060, x: -4.5, y: 1.0, radius: 0.0300}
+  - {name: PillarD0050B, x: 6.0, y: 1.0, radius: 0.0250}
+  - {name: PillarD0600B, x: -5.8, y: 3.0, radius: 0.1800}
+  - {name: PillarD0550B, x: -2.2, y: 0.9, radius: 0.2150}
+  - {name: PillarD0500B, x: -1.25, y: 2.75, radius: 0.1600}
+  - {name: PillarD0520, x: -4.8, y: -2.0, radius: 0.1600}
+  - {name: PillarD0380, x: 0.5, y: -3.45, radius: 0.1900}
+  - {name: PillarD0320, x: 0.25, y: 0.35, radius: 0.1600}
+  - {name: PillarD0270, x: 0.95, y: 0.85, radius: 0.1350}
+  - {name: PillarD0230, x: 1.5, y: -3.4, radius: 0.1150}
+  - {name: PillarD0170, x: 3.3, y: 3.0, radius: 0.0850}
+  - {name: PillarD0130, x: 2.05, y: -2.65, radius: 0.0650}
+  - {name: PillarD0110, x: 2.65, y: 0.95, radius: 0.0550}
+  - {name: PillarD0080, x: 3.35, y: -2.1, radius: 0.0400}
+  - {name: PillarD0070, x: 3.8, y: -0.1, radius: 0.0350}
+  - {name: PillarD0040, x: 6.1, y: -3.1, radius: 0.0200}
+  - {name: PillarD0030, x: 4.3, y: 2.45, radius: 0.0150}
+  - {name: PillarD0025, x: 5.2, y: -1.8, radius: 0.0125}
+  - {name: PillarD0015, x: 5.55, y: 1.75, radius: 0.0075}

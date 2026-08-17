@@ -1,0 +1,147 @@
+Panels:
+  - Class: rviz/Displays
+    Help Height: 78
+    Name: Displays
+    Property Tree Widget:
+      Expanded:
+        - /BricsBot Model1
+      Splitter Ratio: 0.5
+    Tree Height: 520
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Alpha: 0.35
+      Cell Size: 1
+      Class: rviz/Grid
+      Color: 120; 120; 120
+      Enabled: true
+      Line Style:
+        Line Width: 0.03
+        Value: Lines
+      Name: World Grid
+      Plane: XY
+      Plane Cell Count: 20
+      Reference Frame: <Fixed Frame>
+      Value: true
+    - Class: rviz/TF
+      Enabled: true
+      Frame Timeout: 15
+      Marker Scale: 0.35
+      Name: TF
+      Show Arrows: true
+      Show Axes: true
+      Show Names: true
+      Value: true
+    - Alpha: 1
+      Class: rviz/RobotModel
+      Collision Enabled: false
+      Description Source: Parameter
+      Enabled: true
+      Links:
+        All Links Enabled: true
+        Expand Tree: false
+      Name: BricsBot Model
+      Robot Description: robot_description
+      TF Prefix: bricsbot
+      Update Interval: 0
+      Value: true
+      Visual Enabled: true
+    - Alpha: 0.8
+      Class: rviz/Map
+      Color Scheme: costmap
+      Draw Behind: true
+      Enabled: false
+      Name: Inflated Costmap
+      Topic: /aquaflow/esdf_costmap
+      Value: true
+    - Class: rviz/MarkerArray
+      Enabled: true
+      Marker Topic: /aquaflow/privileged_map
+      Name: Semantic ESDF and Pool
+      Namespaces:
+        aquaflow_privileged_map: true
+        aquaflow_semantic_cost: true
+      Queue Size: 10
+      Value: true
+    - Alpha: 1
+      Buffer Length: 1
+      Class: rviz/Path
+      Color: 255; 0; 255
+      Enabled: true
+      Line Style: Lines
+      Line Width: 0.05
+      Name: Global Teacher Path
+      Topic: /aquaflow/teacher_global_path
+      Value: true
+    - Alpha: 1
+      Buffer Length: 1
+      Class: rviz/Path
+      Color: 0; 120; 255
+      Enabled: true
+      Line Style: Lines
+      Line Width: 0.08
+      Name: Local Teacher Path
+      Topic: /aquaflow/teacher_reference
+      Value: true
+    - Alpha: 1
+      Buffer Length: 1
+      Class: rviz/Path
+      Color: 255; 0; 0
+      Enabled: true
+      Line Style: Lines
+      Line Width: 0.05
+      Name: Actual Path
+      Topic: /aquaflow/actual_path
+      Value: true
+    - Alpha: 1
+      Class: rviz/MarkerArray
+      Enabled: true
+      Name: Local Samples
+      Topic: /aquaflow/teacher_local_points
+      Value: true
+    - Class: rviz/MarkerArray
+      Enabled: true
+      Marker Topic: /aquaflow/tracking_error_markers
+      Name: Tracking XY and Yaw Error
+      Namespaces:
+        aquaflow_tracking_error: true
+      Queue Size: 10
+      Value: true
+    - Alpha: 1
+      Class: rviz/MarkerArray
+      Enabled: false
+      Name: Global Samples
+      Topic: /aquaflow/teacher_global_points
+      Value: true
+    - Alpha: 1
+      Class: rviz/MarkerArray
+      Enabled: true
+      Name: Actual Points
+      Topic: /aquaflow/actual_path_points
+      Value: true
+  Enabled: true
+  Global Options:
+    Background Color: 48; 48; 48
+    Fixed Frame: world_ned
+    Frame Rate: 30
+  Name: root
+  Tools:
+    - Class: rviz/Interact
+      Hide Inactive Objects: true
+    - Class: rviz/SetGoal
+      Topic: /move_base_simple/goal
+  Value: true
+  Views:
+    Current:
+      Class: rviz/Orbit
+      Distance: 13
+      Invert Z Axis: true
+      Focal Point:
+        X: 0
+        Y: 0
+        Z: 0
+      Pitch: 1.05
+      Yaw: 0.78
+Window Geometry:
+  Height: 900
+  Width: 1450

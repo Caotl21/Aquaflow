@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+<launch>
+  <arg name="vehicle_model" default="bluerov2"/>
+  <arg name="robot_description_file"
+       default="$(eval {'bluerov2': 'data/bluerov2.urdf', 'bricsbot': 'data/bricsbot/bricsbot.urdf'}[arg('vehicle_model')])"/>
+  <arg name="rviz_config"
+       default="$(eval {'bluerov2': 'rviz/aquaflow_tracking.rviz', 'bricsbot': 'rviz/aquaflow_bricsbot_tracking.rviz'}[arg('vehicle_model')])"/>
+  <!-- RobotModel in the chosen RViz profile reads this global description. -->
+  <param name="robot_description"
+         textfile="$(find aquaflow_stonefish)/$(arg robot_description_file)"/>
+  <node pkg="rviz" type="rviz" name="aquaflow_rviz" output="screen"
+        args="-d $(find aquaflow_stonefish)/$(arg rviz_config)"/>
+</launch>

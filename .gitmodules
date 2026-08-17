@@ -1,0 +1,6 @@
+[submodule "src/stonefish_ros"]
+	path = src/stonefish_ros
+	url = https://github.com/patrykcieslak/stonefish_ros.git
+[submodule "src/cola2_msgs"]
+	path = src/cola2_msgs
+	url = https://github.com/srv/cola2_msgs.git
