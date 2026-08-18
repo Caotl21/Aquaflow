@@ -46,6 +46,14 @@ def triangles(objects):
     return sum(max(0, len(p.vertices) - 2) for o in objects for p in o.data.polygons)
 
 
+def mesh_extent(objects):
+    points = [component for obj in objects for vertex in obj.data.vertices
+              for component in vertex.co]
+    if not points:
+        return 0.0
+    return max(points) - min(points)
+
+
 def main():
     source, obj_out, png_out, ratio, size = args()
     bpy.ops.wm.read_factory_settings(use_empty=True)
@@ -62,9 +70,13 @@ def main():
     if not meshes:
         raise SystemExit("Input mesh contains no mesh objects")
 
-    # Collada is authored in millimetres in this asset despite its metadata.
+    # bot_shark.obj is millimetres while the manually aligned bricsbot.obj is
+    # already metres.  Infer that distinction from the imported bounding box.
+    # A lab ROV visual asset wider than 10 units is plainly expressed in mm.
+    extent_before_scale = mesh_extent(meshes)
+    unit_scale = 0.001 if extent_before_scale > 10.0 else 1.0
     for obj in meshes:
-        obj.scale = (0.001, 0.001, 0.001)
+        obj.scale = tuple(component * unit_scale for component in obj.scale)
         bpy.context.view_layer.objects.active = obj
         obj.select_set(True)
         bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
@@ -90,8 +102,11 @@ def main():
     bpy.ops.uv.smart_project(island_margin=0.003)
     bpy.ops.object.mode_set(mode="OBJECT")
 
+    # Stonefish samples the visual texture directly.  Use an opaque RGB atlas:
+    # a transparent bake target makes the otherwise correct colours appear
+    # almost black underwater.
     image = bpy.data.images.new("bricsbot_baked", width=size, height=size,
-                                alpha=True)
+                                alpha=False)
     image.filepath_raw = png_out
     image.file_format = "PNG"
 
@@ -113,7 +128,7 @@ def main():
     scene.cycles.samples = 32
     scene.cycles.use_denoising = False
     scene.render.bake.use_clear = True
-    scene.render.bake.margin = 4
+    scene.render.bake.margin = 8
     scene.render.bake.margin_type = "ADJACENT_FACES"
     scene.render.bake.use_selected_to_active = False
     scene.render.bake.target = "IMAGE_TEXTURES"
@@ -148,6 +163,9 @@ def main():
     print("Baked Stonefish asset: %s" % obj_out)
     print("Texture: %s" % png_out)
     print("Triangles: %d -> %d" % (before, triangles([obj])))
+    print("Input extent: %.6f; applied unit scale: %.6f" %
+          (extent_before_scale, unit_scale))
+    print("Output extent: %.6f" % mesh_extent([obj]))
 
 
 if __name__ == "__main__":

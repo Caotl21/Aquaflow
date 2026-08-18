@@ -14,38 +14,47 @@
     <base_link name="base_link" type="compound" physics="submerged">
       <external_part name="BricsBotHull" type="model" physics="submerged" buoyant="false">
         <physical>
-          <mesh filename="bricsbot/bricsbot_collision.obj" scale="1.0"/>
-          <origin xyz="0 0 0" rpy="0 0 0"/>
+          <mesh filename="bricsbot/bricsbot_collision_candidate.obj" scale="1.0"/>
+          <origin xyz="0 0 0" rpy="-1.5707963267948966 0 0"/>
           <thickness value="0.004"/>
         </physical>
         <visual>
-          <mesh filename="bricsbot/bricsbot.obj" scale="1.0"/>
+          <mesh filename="bricsbot/bricsbot_stonefish_baked.obj" scale="1.0"/>
           <!-- Centre the converted mesh's bounding box on base_link. -->
-          <!-- CAD: +X forward/+Z up; Stonefish: +X forward/+Z down (NED). -->
-          <origin xyz="-0.0008 0.0 0.0000" rpy="0 0 0"/>
+          <!-- bricsbot.obj has +X forward and +Y up after its Blender
+               alignment.  Stonefish uses NED (+Z down): rotate the visual
+               mesh only, so its horizontal thruster plane becomes body XY. -->
+          <origin xyz="-0.0008 0.0 -0.0020" rpy="-1.5707963267948966 0 0"/>
         </visual>
         <material name="Fiberglass"/>
         <look name="bricsbot_body"/>
+        <!-- The collision shell is only a geometric envelope.  Explicitly
+             constrain its mass; otherwise Stonefish estimates several kg
+             from Fiberglass density and shell thickness. -->
+        <mass value="0.50"/>
         <compound_transform xyz="0 0 0" rpy="0 0 0"/>
       </external_part>
 
-      <!-- 7.95 kg in air.  The buoyant volume is 0.00775 m^3, just above
-           neutral for 1031 kg/m^3 seawater (CB/CG are initially coincident). -->
+      <!-- Approximate 7.95 kg total air mass.  The external collision shell
+           contributes 0.50 kg; the remaining 7.44 kg is concentrated below
+           the body origin to provide a stable CG/CB separation. -->
       <internal_part name="BricsBotMass" type="box" physics="submerged" buoyant="false">
         <dimensions xyz="0.374 0.358 0.058"/>
         <origin xyz="0 0 0" rpy="0 0 0"/>
         <material name="Steel"/>
         <look name="None"/>
-        <mass value="7.95"/>
-        <compound_transform xyz="0 0 0" rpy="0 0 0"/>
+        <mass value="7.44"/>
+        <compound_transform xyz="0 0 0.030" rpy="0 0 0"/>
       </internal_part>
       <internal_part name="BricsBotBuoyancy" type="box" physics="submerged" buoyant="true">
+        <!-- 7.775 L displacement: about 0.8% positive in 1031 kg/m^3 water. -->
         <dimensions xyz="0.374 0.358 0.058"/>
         <origin xyz="0 0 0" rpy="0 0 0"/>
         <material name="Neutral"/>
         <look name="None"/>
         <mass value="0.01"/>
-        <compound_transform xyz="0 0 0" rpy="0 0 0"/>
+        <!-- NED: negative z is above the CG. -->
+        <compound_transform xyz="0 0 -0.030" rpy="0 0 0"/>
       </internal_part>
     </base_link>
 
