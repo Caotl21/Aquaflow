@@ -19,12 +19,13 @@ __pycache__/
 /src/aquaflow_stonefish/data/bluerov2/*.bak
 /src/aquaflow_stonefish/data/bluerov2/using
 
-/src/aquaflow_stonefish/data/bricsbot/bot_shark.dae
-/src/aquaflow_stonefish/data/bricsbot/bot_shark.obj
-/src/aquaflow_stonefish/data/bricsbot/bot_shark.mtl
-/src/aquaflow_stonefish/data/bricsbot/shark.dae
-/src/aquaflow_stonefish/data/bricsbot/tag.dae
-/src/aquaflow_stonefish/data/bricsbot/rander_v1*
-/src/aquaflow_stonefish/data/bricsbot/bricsbot_stonefish_baked.*
-/src/aquaflow_stonefish/data/bricsbot/TAG.png
-/src/aquaflow_stonefish/data/bricsbot/brics.png
+# BricsBot: retain the runtime assets used by Stonefish/RViz in Git.
+# Raw CAD, conversion intermediates and retired assets are kept locally in
+# archive/ and must not be committed.  This intentionally does NOT ignore:
+#   bricsbot_stonefish_baked.{obj,mtl}, bricsbot.png,
+#   bricsbot_collision_candidate.{obj,mtl}, bricsbot.urdf,
+#   bot_shark_stonefish.{obj,mtl}, TAG.png
+/src/aquaflow_stonefish/data/bricsbot/archive/
+/src/aquaflow_stonefish/data/bricsbot/*.blend
+/src/aquaflow_stonefish/data/bricsbot/*.blend1
+/src/aquaflow_stonefish/data/bricsbot/*.bak
