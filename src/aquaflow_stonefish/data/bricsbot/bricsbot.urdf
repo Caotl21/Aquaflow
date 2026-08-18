@@ -2,9 +2,11 @@
 <robot name="bricsbot">
   <link name="base_link">
     <visual>
-      <!-- CAD: +X forward, +Z up.  Stonefish: +X forward, +Z down (NED).
-           Flip only the vertical axis; do not yaw the visual mesh. -->
-      <origin xyz="-0.0008 0.0553 0.0023" rpy="3.141592653589793 0 0"/>
+      <!-- The source mesh has +X forward and +Y up.  RViz uses the same
+           world_ned/body convention as the Stonefish TF here (+Z down), so
+           map mesh +Y to body -Z with one -90 degree roll. -->
+      <origin xyz="-0.0008 0.0 -0.0020"
+              rpy="-1.5707963267948966 0 -1.5707963267948966"/>
       <geometry>
         <mesh filename="package://aquaflow_stonefish/data/bricsbot/bot_shark_stonefish.obj" scale="1 1 1"/>
       </geometry>
