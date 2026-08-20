@@ -81,7 +81,8 @@ class PrivilegedTeacherNode:
         rospy.Subscriber("/aquaflow/nominal_path", Path, self.nominal_cb, queue_size=1)
         rospy.Subscriber(self.goal_topic, PoseStamped, self.goal_cb, queue_size=1)
         self.timer = rospy.Timer(rospy.Duration(0.2), self.update)
-        rospy.loginfo("ESDF A* teacher ready: %d obstacles, %dx%d grid", len(self.obstacles),
+        rospy.loginfo("ESDF A* teacher ready: vehicle=%s  goal=%s  %d obstacles, %dx%d grid",
+                      self.vehicle_name, self.goal, len(self.obstacles),
                       self.costmap.width, self.costmap.height)
 
     def odom_cb(self, msg):
@@ -138,7 +139,7 @@ class PrivilegedTeacherNode:
         points.type = Marker.SPHERE_LIST
         points.action = Marker.ADD
         points.pose.orientation.w = 1.0
-        points.scale.x = points.scale.y = points.scale.z = 0.12 if local else 0.075
+        points.scale.x = points.scale.y = points.scale.z = 0.07 if local else 0.05
         if local:
             points.color.r, points.color.g, points.color.b, points.color.a = 0.0, 0.55, 1.0, 0.95
         else:
@@ -156,7 +157,7 @@ class PrivilegedTeacherNode:
             target.pose.position.y = samples[min(2, len(samples) - 1)][1]
             target.pose.position.z = samples[min(2, len(samples) - 1)][2]
             target.pose.orientation.w = 1.0
-            target.scale.x = target.scale.y = target.scale.z = 0.24
+            target.scale.x = target.scale.y = target.scale.z = 0.14
             target.color.r, target.color.g, target.color.b, target.color.a = 1.0, 0.85, 0.0, 1.0
             output.markers.append(target)
         return output
@@ -179,13 +180,20 @@ class PrivilegedTeacherNode:
 
     def update(self, _event):
         if self.odom is None or self.nominal is None or not self.nominal.poses:
+            rospy.logwarn_throttle(5.0, "teacher: waiting — odom=%s nominal=%s",
+                                   "ok" if self.odom else "None",
+                                   "ok(%d)" % len(self.nominal.poses) if self.nominal and self.nominal.poses else "None")
             return
         now = rospy.Time.now()
         p = self.odom.pose.pose.position
         current = (p.x, p.y, p.z)
         goal = self.goal_pose()
         if self.global_plan is None or point_to_polyline_distance(current[:2], self.global_plan) > self.replan_deviation:
-            if not self.replan(current, goal):
+            ok = self.replan(current, goal)
+            rospy.loginfo("teacher: replan from=(%.2f,%.2f) goal=(%.2f,%.2f) ok=%s plan_len=%s",
+                          current[0], current[1], goal[0], goal[1], ok,
+                          len(self.global_plan) if self.global_plan else 0)
+            if not ok:
                 self.label_pub.publish(Float32MultiArray(data=[1.0, 0.0, 1.0]))
                 return
         frame = self.nominal.header.frame_id or "world_ned"
@@ -193,6 +201,8 @@ class PrivilegedTeacherNode:
         local = self.sampler.sample(self.global_plan, current[:2])
         self.reference_pub.publish(self.make_path(local, frame, now))
         self.local_points_pub.publish(self.make_point_markers(local, frame, now, local=True))
+        rospy.loginfo_throttle(2.0, "teacher: published %d local points near (%.2f,%.2f)",
+                               len(local), current[0], current[1])
         clearance = min(self.costmap.signed_distance(item[0], item[1]) - self.costmap.inflation
                         for item in self.global_plan)
         risk = 1.0 if clearance < 0.15 else 0.0

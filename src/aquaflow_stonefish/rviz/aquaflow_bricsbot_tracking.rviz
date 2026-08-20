@@ -93,31 +93,43 @@ Visualization Manager:
       Name: Actual Path
       Topic: /aquaflow/actual_path
       Value: true
-    - Alpha: 1
-      Class: rviz/MarkerArray
-      Enabled: true
-      Name: Local Samples
-      Topic: /aquaflow/teacher_local_points
-      Value: true
     - Class: rviz/MarkerArray
       Enabled: true
+      Marker Topic: /aquaflow/teacher_local_points
+      Name: Local Samples
+      Namespaces:
+        aquaflow_teacher_local: true
+      Queue Size: 10
+      Value: true
+    - Class: rviz/MarkerArray
+      Enabled: false
       Marker Topic: /aquaflow/tracking_error_markers
       Name: Tracking XY and Yaw Error
       Namespaces:
         aquaflow_tracking_error: true
       Queue Size: 10
-      Value: true
+      Value: false
+    - Class: rviz/MarkerArray
+      Enabled: false
+      Marker Topic: /aquaflow/tracking_target_markers
+      Name: Tracking Target Points
+      Namespaces:
+        aquaflow_tracking_target: true
+      Queue Size: 10
+      Value: false
     - Alpha: 1
       Class: rviz/MarkerArray
       Enabled: false
       Name: Global Samples
       Topic: /aquaflow/teacher_global_points
       Value: true
-    - Alpha: 1
-      Class: rviz/MarkerArray
+    - Class: rviz/MarkerArray
       Enabled: true
+      Marker Topic: /aquaflow/actual_path_points
       Name: Actual Points
-      Topic: /aquaflow/actual_path_points
+      Namespaces:
+        aquaflow_actual_path: true
+      Queue Size: 10
       Value: true
   Enabled: true
   Global Options:

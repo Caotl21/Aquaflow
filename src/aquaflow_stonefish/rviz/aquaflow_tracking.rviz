@@ -201,6 +201,14 @@ Visualization Manager:
       Value: true
     - Class: rviz/MarkerArray
       Enabled: true
+      Marker Topic: /aquaflow/tracking_target_markers
+      Name: Tracking Target Points
+      Namespaces:
+        aquaflow_tracking_target: true
+      Queue Size: 10
+      Value: true
+    - Class: rviz/MarkerArray
+      Enabled: true
       Marker Topic: /aquaflow/actual_path_points
       Name: Actual Trajectory Samples
       Namespaces:

@@ -27,7 +27,7 @@ class PlanarPIDTracker:
         self.odom_timeout = float(rospy.get_param("~odom_timeout", 0.25))
         self.path_timeout = float(rospy.get_param("~path_timeout", 0.50))
         self.lookahead = max(0, int(rospy.get_param("~lookahead_index", 2)))
-        self.kp_xy = float(rospy.get_param("~kp_xy", 5.0))
+        self.kp_xy = float(rospy.get_param("~kp_xy", 15.0))
         self.kd_xy = float(rospy.get_param("~kd_xy", 3.0))
         self.ki_xy = float(rospy.get_param("~ki_xy", 0.0))
         self.kp_yaw = float(rospy.get_param("~kp_yaw", 4.0))
@@ -38,8 +38,8 @@ class PlanarPIDTracker:
         self.kd_z = float(rospy.get_param("~kd_z", 1.0))
         self.ki_z = float(rospy.get_param("~ki_z", 0.5))
         self.z_integral_limit = max(0.0, float(rospy.get_param("~z_integral_limit", 5.0)))
-        self.max_fx = float(rospy.get_param("~max_fx", 2.0))
-        self.max_fy = float(rospy.get_param("~max_fy", 2.0))
+        self.max_fx = float(rospy.get_param("~max_fx", 4.0))
+        self.max_fy = float(rospy.get_param("~max_fy", 4.0))
         self.max_nz = float(rospy.get_param("~max_nz", 1.4))
         self.max_fz = float(rospy.get_param("~max_fz", 20.0))
         self.vehicle_name = rospy.get_param("~vehicle_name", "bluerov2")
@@ -54,6 +54,8 @@ class PlanarPIDTracker:
         self.error_norm_pub = rospy.Publisher("/aquaflow/tracking_error/xy_norm_m", Float64, queue_size=10)
         self.error_marker_pub = rospy.Publisher("/aquaflow/tracking_error_markers", MarkerArray,
                                                 queue_size=1)
+        self.target_marker_pub = rospy.Publisher("/aquaflow/tracking_target_markers", MarkerArray,
+                                                 queue_size=1)
         rospy.Subscriber(self.odom_topic, Odometry, self.odom_cb, queue_size=1)
         rospy.Subscriber(self.reference_topic, Path, self.path_cb, queue_size=1)
         self.timer = rospy.Timer(rospy.Duration(1.0 / float(rospy.get_param("~rate", 20.0))), self.update)
@@ -125,6 +127,78 @@ class PlanarPIDTracker:
         arrows.markers.append(text)
         self.error_marker_pub.publish(arrows)
 
+    def publish_target_markers(self, now, position, yaw, nearest_idx, target):
+        """Publish the nearest path point and lookahead target as RViz markers."""
+        z = position.z + 0.12
+        markers = MarkerArray()
+
+        # Nearest point on path (cyan sphere)
+        nearest_pose = self.path.poses[nearest_idx].pose
+        nearest_marker = Marker()
+        nearest_marker.header.frame_id = "world_ned"
+        nearest_marker.header.stamp = now
+        nearest_marker.ns = "aquaflow_tracking_target"
+        nearest_marker.id = 0
+        nearest_marker.type = Marker.SPHERE
+        nearest_marker.action = Marker.ADD
+        nearest_marker.pose.position.x = nearest_pose.position.x
+        nearest_marker.pose.position.y = nearest_pose.position.y
+        nearest_marker.pose.position.z = z
+        nearest_marker.pose.orientation.w = 1.0
+        nearest_marker.scale.x = nearest_marker.scale.y = nearest_marker.scale.z = 0.18
+        nearest_marker.color.r, nearest_marker.color.g = 0.0, 0.85
+        nearest_marker.color.b, nearest_marker.color.a = 1.0, 0.95
+        markers.markers.append(nearest_marker)
+
+        # Lookahead target point (magenta diamond)
+        target_marker = Marker()
+        target_marker.header.frame_id = "world_ned"
+        target_marker.header.stamp = now
+        target_marker.ns = "aquaflow_tracking_target"
+        target_marker.id = 1
+        target_marker.type = Marker.SPHERE
+        target_marker.action = Marker.ADD
+        target_marker.pose.position.x = target.position.x
+        target_marker.pose.position.y = target.position.y
+        target_marker.pose.position.z = z
+        target_marker.pose.orientation.w = 1.0
+        target_marker.scale.x = target_marker.scale.y = target_marker.scale.z = 0.22
+        target_marker.color.r, target_marker.color.g = 1.0, 0.0
+        target_marker.color.b, target_marker.color.a = 0.8, 0.95
+        markers.markers.append(target_marker)
+
+        # Line from robot to nearest point (cyan dashed)
+        line1 = Marker()
+        line1.header.frame_id = "world_ned"
+        line1.header.stamp = now
+        line1.ns = "aquaflow_tracking_target"
+        line1.id = 2
+        line1.type = Marker.LINE_STRIP
+        line1.action = Marker.ADD
+        line1.scale.x = 0.03
+        line1.color.r, line1.color.g = 0.0, 0.85
+        line1.color.b, line1.color.a = 1.0, 0.6
+        line1.points = [Point(position.x, position.y, z),
+                        Point(nearest_pose.position.x, nearest_pose.position.y, z)]
+        markers.markers.append(line1)
+
+        # Line from nearest point to lookahead target (magenta dashed)
+        line2 = Marker()
+        line2.header.frame_id = "world_ned"
+        line2.header.stamp = now
+        line2.ns = "aquaflow_tracking_target"
+        line2.id = 3
+        line2.type = Marker.LINE_STRIP
+        line2.action = Marker.ADD
+        line2.scale.x = 0.03
+        line2.color.r, line2.color.g = 1.0, 0.0
+        line2.color.b, line2.color.a = 0.8, 0.6
+        line2.points = [Point(nearest_pose.position.x, nearest_pose.position.y, z),
+                        Point(target.position.x, target.position.y, z)]
+        markers.markers.append(line2)
+
+        self.target_marker_pub.publish(markers)
+
     def update(self, _event):
         now = rospy.Time.now()
         if self.odom is None or self.path is None or not self.path.poses:
@@ -153,6 +227,7 @@ class PlanarPIDTracker:
             eyaw = 0.0
             self.int_yaw = 0.0
         self.publish_errors(now, p, target, yaw, target_yaw, ex, ey, eyaw)
+        self.publish_target_markers(now, p, yaw, nearest, target)
         vx = self.odom.twist.twist.linear.x
         vy = self.odom.twist.twist.linear.y
         wz = self.odom.twist.twist.angular.z

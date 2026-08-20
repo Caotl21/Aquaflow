@@ -3,8 +3,15 @@
   <arg name="map_file"
        default="$(find aquaflow_ref)/config/random_pillars.yaml"/>
   <arg name="vehicle_name" default="bluerov2"/>
+  <arg name="trajectory_type" default="line"
+       doc="Nominal trajectory: line or figure_eight"/>
   <rosparam command="load" file="$(arg map_file)" ns="/privileged_teacher"/>
   <rosparam command="load" file="$(arg map_file)" ns="/privileged_map_visualizer"/>
+  <!-- Nominal reference is required by the teacher for local sampling. -->
+  <node pkg="aquaflow_stonefish" type="nominal_reference_publisher.py"
+        name="nominal_reference_publisher" output="screen">
+    <param name="trajectory_type" value="$(arg trajectory_type)"/>
+  </node>
   <node pkg="aquaflow_ref" type="privileged_teacher.py"
         name="privileged_teacher" output="screen">
     <param name="vehicle_name" value="$(arg vehicle_name)"/>
