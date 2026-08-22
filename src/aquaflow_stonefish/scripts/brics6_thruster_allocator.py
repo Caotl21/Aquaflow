@@ -92,14 +92,20 @@ class Brics6Allocator:
         self.reverse_max_force = float(rospy.get_param("~reverse_max_force_n", 6.0 * 9.80665))
         self.last_wrench = None
         self.pinv = self._build_pseudoinverse()
+        # T2, T4, T6 have inverted_setpoint="true" in the Stonefish scenario,
+        # meaning Stonefish negates the PWM command before applying the thrust
+        # model.  We must negate the allocator output for those thrusters so the
+        # actual force matches the direction the allocator computed.
+        inverted = rospy.get_param("~inverted_setpoints", [False, True, False, True, False, True])
+        self.sign = [(-1.0 if inv else 1.0) for inv in inverted]
         topic = "/%s/setpoint/pwm" % self.vehicle_name
         self.pub = rospy.Publisher(topic, Float64MultiArray, queue_size=1)
         rospy.Subscriber("/controller/generalized_force", WrenchStamped,
                          self.wrench_cb, queue_size=1)
         self.timer = rospy.Timer(rospy.Duration(0.05), self.update)
         rospy.on_shutdown(self.shutdown)
-        rospy.loginfo("BricsBot six-thruster allocator ready: +%.2f/-%.2f N",
-                      self.forward_max_force, self.reverse_max_force)
+        rospy.loginfo("BricsBot six-thruster allocator ready: +%.2f/-%.2f N  inverted=%s",
+                      self.forward_max_force, self.reverse_max_force, inverted)
 
     def _build_pseudoinverse(self):
         matrix = [[0.0] * 6 for _ in range(4)]
@@ -158,7 +164,8 @@ class Brics6Allocator:
                 wrench = (w.force.x, w.force.y, w.torque.z, w.force.z)
                 forces = [sum(self.pinv[i][j] * wrench[j] for j in range(4))
                           for i in range(6)]
-                out = [self.force_to_pwm(force) for force in forces]
+                out = [self.force_to_pwm(force) * self.sign[i]
+                       for i, force in enumerate(forces)]
         self.pub.publish(Float64MultiArray(data=out))
 
     def shutdown(self):

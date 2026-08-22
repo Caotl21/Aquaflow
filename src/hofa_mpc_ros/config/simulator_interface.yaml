@@ -1,0 +1,11 @@
+# Simulator interface configuration
+simulator:
+  name: stonefish
+  odom_topic: /bricsbot/odometry
+  odom_frame: world_ned
+  body_frame: base_link
+  world_convention: NED
+  body_convention: FRD
+  control_output_topic: /controller/generalized_force
+  control_output_type: wrench_stamped
+  vehicle_name: bricsbot

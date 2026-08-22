@@ -1,0 +1,76 @@
+<!-- HOFA-MPC simulation launch for BricsBot -->
+<launch>
+  <!-- Arguments -->
+  <arg name="vehicle_name" default="bricsbot"/>
+  <arg name="vehicle_model" default="bricsbot"/>
+  <arg name="trajectory" default="hover"/>
+  <arg name="controller" default="hofa_mpc" doc="hofa_mpc or pid"/>
+  <arg name="scene" default="empty_pool"/>
+  <arg name="enable" default="true"/>
+
+  <!-- Load parameters: trajectories and simulator at global level for all nodes -->
+  <rosparam command="load" file="$(find hofa_mpc_ros)/config/vehicle.yaml" />
+  <rosparam command="load" file="$(find hofa_mpc_ros)/config/trajectories.yaml" />
+  <rosparam command="load" file="$(find hofa_mpc_ros)/config/simulator_interface.yaml" />
+
+  <!-- 1. Start Stonefish simulator (via aquaflow_pool.launch) -->
+  <include file="$(find aquaflow_stonefish)/launch/aquaflow_pool.launch">
+    <arg name="vehicle_model" value="$(arg vehicle_model)"/>
+    <arg name="scene" value="$(arg scene)"/>
+  </include>
+
+  <!-- 1b. Start privileged teacher for path planning (RViz 2D Nav Goal → /aquaflow/teacher_reference) -->
+  <include file="$(find aquaflow_ref)/launch/teacher.launch">
+    <arg name="vehicle_name" value="$(arg vehicle_name)"/>
+  </include>
+
+  <!-- 2. Start thruster allocator for bricsbot -->
+  <node pkg="aquaflow_stonefish" type="brics6_thruster_allocator.py"
+        name="brics6_thruster_allocator" output="screen">
+    <param name="vehicle_name" value="$(arg vehicle_name)"/>
+    <param name="enabled" value="$(arg enable)"/>
+  </node>
+
+  <!-- 3. Start trajectory server -->
+  <node pkg="hofa_mpc_ros" type="trajectory_server_node.py"
+        name="trajectory_server" output="screen">
+    <param name="trajectory" value="$(arg trajectory)"/>
+    <param name="default_trajectory" value="$(arg trajectory)"/>
+    <param name="startup_time_s" value="3.0"/>
+    <param name="yaw_mode" value="tangent"/>
+    <remap from="~reference" to="/hofa_mpc/reference"/>
+  </node>
+
+  <!-- 4. Start controller -->
+  <group if="$(eval controller == 'hofa_mpc')">
+    <node pkg="hofa_mpc_ros" type="hofa_mpc_controller_node.py"
+          name="hofa_mpc_controller" output="screen">
+      <!-- Load vehicle dynamics, MPC, and safety params into node private namespace -->
+      <rosparam command="load" file="$(find hofa_mpc_ros)/config/vehicle.yaml" />
+      <rosparam command="load" file="$(find hofa_mpc_ros)/config/mpc.yaml" />
+      <rosparam command="load" file="$(find hofa_mpc_ros)/config/safety.yaml" />
+      <param name="vehicle_name" value="$(arg vehicle_name)"/>
+      <param name="odom_topic" value="/$(arg vehicle_name)/odometry"/>
+      <param name="ref_topic" value="/hofa_mpc/reference"/>
+      <param name="wrench_topic" value="/controller/generalized_force"/>
+      <param name="enabled" value="$(arg enable)"/>
+    </node>
+  </group>
+
+  <group if="$(eval controller == 'pid')">
+    <node pkg="aquaflow_stonefish" type="planar_pid_tracker.py"
+          name="planar_pid_tracker" output="screen">
+      <param name="vehicle_name" value="$(arg vehicle_name)"/>
+      <param name="kp_xy" value="15.0"/>
+      <param name="kd_xy" value="3.0"/>
+      <param name="kp_yaw" value="4.0"/>
+      <param name="kd_yaw" value="1.0"/>
+    </node>
+  </group>
+
+  <!-- 5. Record actual path -->
+  <node pkg="aquaflow_stonefish" type="actual_path_recorder.py"
+        name="actual_path_recorder" output="screen">
+    <param name="vehicle_name" value="$(arg vehicle_name)"/>
+  </node>
+</launch>

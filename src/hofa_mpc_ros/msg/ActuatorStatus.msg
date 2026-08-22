@@ -1,0 +1,7 @@
+std_msgs/Header header
+geometry_msgs/Wrench requested_wrench
+geometry_msgs/Wrench scaled_wrench
+geometry_msgs/Wrench allocated_wrench
+float64[6] thruster_commands
+float64 allocation_residual
+bool saturated

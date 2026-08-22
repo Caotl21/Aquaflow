@@ -1,0 +1,37 @@
+# BricsBot vehicle dynamics parameters
+vehicle:
+  # Mass matrix: diag(m_x, m_y, I_z) — values to be refined via simulation identification
+  mass_matrix: [7.94, 0.0, 0.0,
+                0.0, 7.94, 0.0,
+                0.0, 0.0, 0.15]
+  coriolis_enabled: false
+  # Linear and quadratic drag coefficients [x, y, yaw]
+  drag_linear: [8.0, 10.0, 1.4]
+  drag_quadratic: [12.0, 15.0, 0.35]
+
+# Horizontal thrusters T1-T4 (45-degree layout)
+thrusters:
+  count: 4
+  positions_xy:
+    - [ 0.1278, -0.1278]   # T1 right-front
+    - [ 0.1273,  0.1273]   # T2 left-front
+    - [-0.1278, -0.1278]   # T3 left-rear
+    - [-0.1273,  0.1273]   # T4 right-rear
+  directions_xy:
+    - [ 0.7071,  0.7071]   # T1 (+x, +y)
+    - [-0.7071,  0.7071]   # T2 (-x, +y)
+    - [-0.7071,  0.7071]   # T3 (-x, +y)
+    - [ 0.7071,  0.7071]   # T4 (+x, +y)
+  thrust_max: [67.67, 67.67, 67.67, 67.67]    # N (positive, from 26V sheet)
+  thrust_min: [-58.84, -58.84, -58.84, -58.84] # N (negative, from 26V sheet)
+  time_constant_s: 0.10
+  deadzone_n: 0.15
+
+# Generalized force scale (for parameter mismatch experiments)
+generalized_force_scale:
+  x_positive: 1.0
+  x_negative: 1.0
+  y_positive: 1.0
+  y_negative: 1.0
+  yaw_positive: 1.0
+  yaw_negative: 1.0

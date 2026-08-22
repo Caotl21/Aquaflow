@@ -1,0 +1,11 @@
+std_msgs/Header header
+string state
+bool solver_success
+int32 solver_iterations
+float64 objective_value
+float64 layer1_time_ms
+float64 layer2_time_ms
+float64 callback_time_ms
+float64 position_error_m
+float64 yaw_error_rad
+geometry_msgs/Accel virtual_accel_cmd

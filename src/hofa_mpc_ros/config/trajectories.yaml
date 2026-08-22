@@ -1,0 +1,47 @@
+# Trajectory definitions
+default_trajectory: hover
+startup_time_s: 3.0
+yaw_mode: tangent
+
+trajectories:
+  hover:
+    type: hover
+    x: 0.0
+    y: 0.0
+    psi: 0.0
+    yaw_mode: fixed
+
+  line:
+    type: line
+    x0: 0.0
+    y0: 0.0
+    x1: 1.5
+    y1: 0.0
+    speed: 0.3
+    yaw_mode: tangent
+
+  circle:
+    type: circle
+    cx: 0.0
+    cy: 0.0
+    radius: 0.8
+    speed: 0.3
+    yaw_mode: tangent
+
+  figure_eight:
+    type: figure_eight
+    cx: 0.0
+    cy: 0.0
+    scale_x: 0.8
+    scale_y: 0.4
+    speed: 0.3
+    yaw_mode: tangent
+
+  hover_scan:
+    type: hover
+    x: 0.0
+    y: 0.0
+    psi: 0.0
+    yaw_mode: scan
+    yaw_scan_amplitude: 0.5
+    yaw_scan_freq: 0.1

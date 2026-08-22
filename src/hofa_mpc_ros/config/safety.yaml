@@ -1,0 +1,10 @@
+# Safety supervisor parameters (loaded into controller node private namespace)
+safety:
+  state_timeout_s: 0.20
+  reference_timeout_s: 0.30
+  max_position_abs_m: [14.0, 8.0]
+  max_world_speed_mps: 1.0
+  max_yaw_rate_radps: 1.2
+  max_consecutive_solver_failures: 3
+  max_saturation_duration_s: 2.0
+  zero_on_time_jump: true
