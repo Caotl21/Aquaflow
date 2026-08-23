@@ -41,6 +41,13 @@
     <remap from="~reference" to="/hofa_mpc/reference"/>
   </node>
 
+  <!-- 3b. Reference processor: arc-length projection + lookahead -->
+  <node pkg="hofa_mpc_ros" type="reference_processor.py"
+        name="reference_processor" output="screen">
+    <rosparam command="load" file="$(find hofa_mpc_ros)/config/reference_processor.yaml" />
+    <param name="vehicle_name" value="$(arg vehicle_name)"/>
+  </node>
+
   <!-- 4. Start controller -->
   <group if="$(eval controller == 'hofa_mpc')">
     <node pkg="hofa_mpc_ros" type="hofa_mpc_controller_node.py"
@@ -65,6 +72,7 @@
       <param name="kd_xy" value="3.0"/>
       <param name="kp_yaw" value="4.0"/>
       <param name="kd_yaw" value="1.0"/>
+      <param name="reference_topic" value="/controller/reference_path"/>
     </node>
   </group>
 

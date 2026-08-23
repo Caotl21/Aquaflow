@@ -49,9 +49,6 @@ class HofaMPCControllerNode:
         self.ref = None
         self.ref_time = 0.0
         self.prev_wrench = np.zeros(3)
-        self.nav_goal_active = False  # True when nav goal overrides trajectory server
-        self.nav_path = []            # List of (x_enu, y_enu, yaw_enu) waypoints
-        self.nav_path_index = 0       # Current tracking index along path
         self.enabled = rospy.get_param("~enabled", False)
         if self.enabled:
             self.controller_state = ControllerState.WAITING_FOR_STATE
@@ -72,11 +69,10 @@ class HofaMPCControllerNode:
         self.reset_sub = rospy.Subscriber(
             "~reset", Empty, self._reset_cb, queue_size=1)
 
-        # Navigation goal: privileged_teacher plans path → /aquaflow/teacher_reference
-        # When received, track along the planned path
-        goal_topic = rospy.get_param("~goal_topic", "/aquaflow/teacher_reference")
-        self.goal_sub = rospy.Subscriber(
-            goal_topic, Path, self._goal_cb, queue_size=1)
+        # Reference trajectory from reference_processor (arc-length projected)
+        self.traj_ref_sub = rospy.Subscriber(
+            "/controller/reference_trajectory", TrajectoryPoint,
+            self._traj_ref_cb, queue_size=1)
 
         # --- Publishers ---
         wrench_topic = rospy.get_param(
@@ -215,13 +211,8 @@ class HofaMPCControllerNode:
         self.state_time = stamp
 
     def _ref_cb(self, msg):
-        """Handle TrajectoryPoint reference (from trajectory_server).
-
-        Ignored when a nav goal is active (nav goal takes priority).
-        """
-        if self.nav_goal_active:
-            return
-
+        """Handle TrajectoryPoint reference (from trajectory_server or
+        reference_processor). Both sources use the same message type."""
         q = msg.pose.orientation
         psi = tft.euler_from_quaternion([q.x, q.y, q.z, q.w])[2]
 
@@ -252,74 +243,34 @@ class HofaMPCControllerNode:
         self.mpc.reset()
         self.safety.reset()
         self.prev_wrench = np.zeros(3)
-        self.nav_goal_active = False
-        self.nav_path = []
-        self.nav_path_index = 0
         rospy.loginfo("Controller RESET")
 
-    def _goal_cb(self, msg):
-        """Handle planned path from privileged_teacher (nav_msgs/Path in NED).
+    def _traj_ref_cb(self, msg):
+        """Handle TrajectoryPoint from reference_processor (arc-length projected).
 
-        Stores the path waypoints. The control loop picks the waypoint
-        ahead of the robot as the tracking target.
+        This overrides the trajectory_server reference when available.
         """
-        if len(msg.poses) == 0:
-            return
-
-        # Store path in ENU (convert from NED)
-        self.nav_path = []
-        for ps in msg.poses:
-            x_enu = ps.pose.position.y   # NED-y -> ENU-x
-            y_enu = ps.pose.position.x   # NED-x -> ENU-y
-            q = ps.pose.orientation
-            yaw_ned = tft.euler_from_quaternion([q.x, q.y, q.z, q.w])[2]
-            yaw_enu = wrap_to_pi(math.pi / 2 - yaw_ned)
-            self.nav_path.append((x_enu, y_enu, yaw_enu))
-
-        self.nav_goal_active = True
-        self.nav_path_index = 0
-        rospy.loginfo("Teacher path received: %d waypoints in NED",
-                      len(self.nav_path))
-
-    def _update_path_tracking(self):
-        """Pick the waypoint ahead of the robot as the tracking target."""
-        if not self.nav_path:
-            return
-
-        # Find closest waypoint
-        min_dist = float('inf')
-        closest_idx = 0
-        for i, (wx, wy, _) in enumerate(self.nav_path):
-            d = math.hypot(self.state.x - wx, self.state.y - wy)
-            if d < min_dist:
-                min_dist = d
-                closest_idx = i
-
-        # Target the next waypoint ahead (or stay at last one)
-        look_ahead = 3  # waypoints ahead
-        target_idx = min(closest_idx + look_ahead, len(self.nav_path) - 1)
-        wx, wy, wpsi = self.nav_path[target_idx]
+        q = msg.pose.orientation
+        psi = tft.euler_from_quaternion([q.x, q.y, q.z, q.w])[2]
 
         self.ref = ReferencePoint(
-            x=wx, y=wy, psi=wpsi,
-            dx=0.0, dy=0.0, dpsi=0.0,
-            ddx=0.0, ddy=0.0, ddpsi=0.0,
+            x=msg.pose.position.x,
+            y=msg.pose.position.y,
+            psi=psi,
+            dx=msg.twist.linear.x,
+            dy=msg.twist.linear.y,
+            dpsi=msg.twist.angular.z,
+            ddx=msg.accel.linear.x,
+            ddy=msg.accel.linear.y,
+            ddpsi=msg.accel.angular.z,
         )
-        self.ref_time = rospy.Time.now().to_sec()
+        self.ref_time = msg.header.stamp.to_sec()
 
     # --- Control loop ---
 
     def _control_cb(self, _event):
         now = rospy.Time.now().to_sec()
         t_start = time.time()
-
-        # Keep ref_time fresh when nav goal is active
-        if self.nav_goal_active and self.ref is not None:
-            self.ref_time = now
-
-        # Path tracking: pick waypoint ahead of robot
-        if self.nav_goal_active and self.nav_path and self.state_received:
-            self._update_path_tracking()
 
         # Check safety
         self.controller_state = self.safety.check_state(

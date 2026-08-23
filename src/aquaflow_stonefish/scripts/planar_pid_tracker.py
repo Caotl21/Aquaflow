@@ -216,7 +216,7 @@ class PlanarPIDTracker:
         p = self.odom.pose.pose.position
         q = self.odom.pose.pose.orientation
         yaw = yaw_from_quat(q)
-        nearest = min(range(len(self.path.poses)), key=lambda i: (self.path.poses[i].pose.position.x - p.x) ** 2 + (self.path.poses[i].pose.position.y - p.y) ** 2)
+        nearest = 0  # reference_processor already projects to nearest
         target = self.path.poses[min(len(self.path.poses) - 1, nearest + self.lookahead)].pose
         dx, dy = target.position.x - p.x, target.position.y - p.y
         c, s = math.cos(yaw), math.sin(yaw)

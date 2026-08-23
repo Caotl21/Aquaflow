@@ -1,0 +1,10 @@
+# Reference processor parameters
+reference_topic: /aquaflow/teacher_reference
+lookahead_distance_m: 0.5
+n_resample_points: 20
+max_speed: 0.35
+max_yaw_rate: 0.5
+s_backtrack_tolerance_m: 0.5
+rate: 20.0
+odom_timeout_s: 0.25
+path_timeout_s: 2.0
