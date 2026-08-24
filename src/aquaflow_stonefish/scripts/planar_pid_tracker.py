@@ -42,7 +42,7 @@ class PlanarPIDTracker:
         self.max_fy = float(rospy.get_param("~max_fy", 4.0))
         self.max_nz = float(rospy.get_param("~max_nz", 1.4))
         self.max_fz = float(rospy.get_param("~max_fz", 20.0))
-        self.vehicle_name = rospy.get_param("~vehicle_name", "bluerov2")
+        self.vehicle_name = rospy.get_param("~vehicle_name", "bricsbot")
         self.odom_topic = "/%s/odometry" % self.vehicle_name
         self.reference_topic = rospy.get_param("~reference_topic", "/aquaflow/nominal_path")
         self.pub = rospy.Publisher("/controller/generalized_force", WrenchStamped, queue_size=1)

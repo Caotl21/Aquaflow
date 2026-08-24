@@ -113,10 +113,14 @@ class HofaMPC:
         # Warm start from previous solution
         w0 = self._prev_w.flatten()
 
-        # Build bounds array for each decision variable
+        # ``bounds`` are bounds on total virtual acceleration.  The decision
+        # variable is the tracking correction w, so shift each stage by the
+        # corresponding reference acceleration.
         if bounds is not None:
-            lb_bounds = np.tile(bounds.lower, Np)
-            ub_bounds = np.tile(bounds.upper, Np)
+            lb_bounds = np.concatenate([
+                bounds.lower - refs[i].acceleration_array() for i in range(Np)])
+            ub_bounds = np.concatenate([
+                bounds.upper - refs[i].acceleration_array() for i in range(Np)])
         else:
             lb_bounds = np.full(n_var, -10.0)
             ub_bounds = np.full(n_var, 10.0)
@@ -146,8 +150,17 @@ class HofaMPC:
                     dw = w_seq[i] - w_seq[i - 1]
                 J_total += float(dw @ self.S @ dw)
 
-                # Predict next state
+                # Error dynamics for a moving reference.  Omitting this term
+                # turns the controller into a point regulator even when the
+                # local planner supplies a full trajectory window.
+                if i < Np - 1:
+                    ref_delta = np.concatenate([
+                        refs[i].pose_array() - refs[i + 1].pose_array(),
+                        refs[i].velocity_array() - refs[i + 1].velocity_array()])
+                else:
+                    ref_delta = np.zeros(6)
                 z = self.Ad @ z + self.Bd @ w_seq[i]
+                z += ref_delta
 
             return J_total
 
@@ -197,7 +210,11 @@ class HofaMPC:
         z_pred = z0.copy()
         for i in range(Np):
             z_pred = self.Ad @ z_pred + self.Bd @ w_opt[i]
-            predicted_path[i] = z_pred[:3] + refs[i].pose_array()
+            if i < Np - 1:
+                z_pred += np.concatenate([
+                    refs[i].pose_array() - refs[i + 1].pose_array(),
+                    refs[i].velocity_array() - refs[i + 1].velocity_array()])
+            predicted_path[i] = z_pred[:3] + refs[min(i + 1, Np - 1)].pose_array()
 
         return MPCSolution(
             success=success,

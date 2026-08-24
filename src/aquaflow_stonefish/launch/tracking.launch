@@ -1,14 +1,14 @@
 <?xml version="1.0"?>
 <launch>
-  <arg name="scene" default="empty_pool"/>
+  <arg name="scene" default="random_pillars"/>
   <arg name="trajectory_type" default="line"
        doc="Nominal trajectory: line or figure_eight"/>
   <arg name="reference_topic" default="/aquaflow/nominal_path"
        doc="Tracking reference: nominal path or /aquaflow/teacher_reference"/>
   <arg name="enable" default="false"
        doc="Set true only after checking the scene and low-amplitude command path."/>
-  <arg name="vehicle_name" default="bluerov2"/>
-  <arg name="vehicle_model" default="bluerov2"
+  <arg name="vehicle_name" default="bricsbot"/>
+  <arg name="vehicle_model" default="bricsbot"
        doc="bluerov2 uses 8-thruster allocator; bricsbot uses the measured 6-thruster allocator."/>
   <include file="$(find aquaflow_stonefish)/launch/aquaflow_pool.launch">
     <arg name="scene" value="$(arg scene)"/>

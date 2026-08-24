@@ -12,7 +12,7 @@ from visualization_msgs.msg import Marker, MarkerArray
 
 class ActualPathRecorder:
     def __init__(self):
-        self.vehicle_name = rospy.get_param("~vehicle_name", "bluerov2")
+        self.vehicle_name = rospy.get_param("~vehicle_name", "bricsbot")
         self.frame_id = rospy.get_param("~frame_id", "world_ned")
         self.output_topic = rospy.get_param("~output_topic", "/aquaflow/actual_path")
         self.min_distance = max(0.0, float(rospy.get_param("~min_distance", 0.02)))

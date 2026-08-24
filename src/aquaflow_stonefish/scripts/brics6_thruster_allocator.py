@@ -52,6 +52,10 @@ class Brics6Allocator:
         (0.0, -0.1235, 0.0),
         (0.0, 0.1235, 0.0),
     )
+    # Stonefish propeller handedness in T1..T6 order.  ``right=false`` flips
+    # the thrust sign after the thrust model; it is not merely a visual
+    # rotation flag.
+    right_handed = (True, False, True, False, True, False)
 
     # 26 V propulsion-sheet calibration, expressed as normalized rotor
     # command magnitude -> positive thrust magnitude.  The measured table
@@ -92,19 +96,28 @@ class Brics6Allocator:
         self.reverse_max_force = float(rospy.get_param("~reverse_max_force_n", 6.0 * 9.80665))
         self.last_wrench = None
         self.pinv = self._build_pseudoinverse()
-        # T2, T4, T6 have inverted_setpoint="true" in the Stonefish scenario,
-        # meaning Stonefish negates the PWM command before applying the thrust
-        # model.  We must negate the allocator output for those thrusters so the
-        # actual force matches the direction the allocator computed.
+        # T2, T4 and T6 use both inverted_setpoint=true and right=false in the
+        # Stonefish model.  Those two signs cancel: a positive user PWM still
+        # produces positive thrust along the geometric direction below.  Do not
+        # apply a second software inversion here.  The previous code negated
+        # these three channels again and therefore reversed their physical
+        # force directions.
         inverted = rospy.get_param("~inverted_setpoints", [False, True, False, True, False, True])
-        self.sign = [(-1.0 if inv else 1.0) for inv in inverted]
+        self.inverted = tuple(bool(v) for v in inverted)
+        # Effective sign from user PWM to physical thrust.  Stonefish applies
+        # inverted_setpoint before the thrust curve and right-handedness after
+        # it.  For the current alternating configuration these signs are +1,
+        # but the curve selected below still differs by propeller handedness.
+        self.effective_sign = tuple(
+            (1.0 if right else -1.0) * (-1.0 if inv else 1.0)
+            for right, inv in zip(self.right_handed, self.inverted))
         topic = "/%s/setpoint/pwm" % self.vehicle_name
         self.pub = rospy.Publisher(topic, Float64MultiArray, queue_size=1)
         rospy.Subscriber("/controller/generalized_force", WrenchStamped,
                          self.wrench_cb, queue_size=1)
         self.timer = rospy.Timer(rospy.Duration(0.05), self.update)
         rospy.on_shutdown(self.shutdown)
-        rospy.loginfo("BricsBot six-thruster allocator ready: +%.2f/-%.2f N  inverted=%s",
+        rospy.loginfo("BricsBot six-thruster allocator ready: +%.2f/-%.2f N  Stonefish inversion=%s (no extra software sign)",
                       self.forward_max_force, self.reverse_max_force, inverted)
 
     def _build_pseudoinverse(self):
@@ -120,8 +133,12 @@ class Brics6Allocator:
                   for col in range(4)] for row in range(4)]
         gram_inv = invert4(gram)
         # A^T(AA^T)^-1: force solution with minimum squared actuator force.
-        return [[sum(matrix[i][row] * gram_inv[i][col] for i in range(4))
-                 for col in range(4)] for row in range(6)]
+        # matrix is A with shape (4, 6), while the pseudoinverse has shape
+        # (6, 4): A^T (A A^T)^-1.  The previous implementation indexed
+        # matrix[i][row], treating A as if it were transposed and attempting
+        # to access rows 4 and 5 of a four-row matrix during node startup.
+        return [[sum(matrix[row][i] * gram_inv[row][col] for row in range(4))
+                 for col in range(4)] for i in range(6)]
 
     def wrench_cb(self, msg):
         self.last_wrench = msg
@@ -142,18 +159,23 @@ class Brics6Allocator:
             return c1
         return c0 + (force_abs - f0) * (c1 - c0) / (f1 - f0)
 
-    def force_to_pwm(self, force):
+    def force_to_pwm(self, force, index):
         """Map desired signed force through the measured nonlinear curve.
 
-        The scenario's inverted_setpoint flags make positive allocator force
-        correspond to positive force along each configured direction, so the
-        allocator only needs the asymmetric magnitude curves here.
+        The curve is selected in the *internal rotor-input* sign.  For a
+        left-handed propeller (right=false), a desired positive physical force
+        uses the negative rotor curve because Stonefish flips its thrust after
+        the curve.  This is why one global positive/negative curve is wrong
+        when forward and reverse thrust magnitudes differ.
         """
         if abs(force) <= 0.05:
             return 0.0
-        curve = self.positive_curve if force > 0.0 else self.negative_curve
+        right = self.right_handed[index]
+        desired_positive = force > 0.0
+        curve = self.positive_curve if (right == desired_positive) else self.negative_curve
         command = self._inverse_curve(abs(force), curve)
-        return max(-1.0, min(1.0, command if force > 0.0 else -command))
+        pwm_sign = self.effective_sign[index] * (1.0 if desired_positive else -1.0)
+        return max(-1.0, min(1.0, pwm_sign * command))
 
     def update(self, _event):
         out = [0.0] * 6
@@ -164,7 +186,7 @@ class Brics6Allocator:
                 wrench = (w.force.x, w.force.y, w.torque.z, w.force.z)
                 forces = [sum(self.pinv[i][j] * wrench[j] for j in range(4))
                           for i in range(6)]
-                out = [self.force_to_pwm(force) * self.sign[i]
+                out = [self.force_to_pwm(force, i)
                        for i, force in enumerate(forces)]
         self.pub.publish(Float64MultiArray(data=out))
 

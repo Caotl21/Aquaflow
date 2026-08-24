@@ -2,7 +2,7 @@
 <launch>
   <arg name="map_file"
        default="$(find aquaflow_ref)/config/random_pillars.yaml"/>
-  <arg name="vehicle_name" default="bluerov2"/>
+  <arg name="vehicle_name" default="bricsbot"/>
   <arg name="trajectory_type" default="line"
        doc="Nominal trajectory: line or figure_eight"/>
   <rosparam command="load" file="$(arg map_file)" ns="/privileged_teacher"/>

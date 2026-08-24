@@ -21,7 +21,7 @@ from visualization_msgs.msg import Marker, MarkerArray
 
 from teacher_core import (ESDFCostmap, GlobalAStarPlanner, LocalReferenceSampler,
                           point_to_polyline_distance, round_corners, shortcut_smooth,
-                          time_parameterize)
+                          path_is_free, time_parameterize)
 
 
 def yaw_from_quaternion(q):
@@ -38,7 +38,7 @@ def quaternion_from_yaw(yaw):
 class PrivilegedTeacherNode:
     def __init__(self):
         self.odom, self.nominal, self.global_plan = None, None, None
-        self.vehicle_name = rospy.get_param("~vehicle_name", "bluerov2")
+        self.vehicle_name = rospy.get_param("~vehicle_name", "bricsbot")
         self.obstacles = rospy.get_param("~obstacles", [])
         self.goal = rospy.get_param("~global_goal", None)
         self.goal_depth = float(rospy.get_param("~goal_depth", 1.0))
@@ -48,6 +48,8 @@ class PrivilegedTeacherNode:
         self.replan_deviation = float(rospy.get_param("~replan_deviation", 1.0))
         self.max_speed = float(rospy.get_param("~max_speed", 0.35))
         self.max_yaw_rate = float(rospy.get_param("~max_yaw_rate", 0.5))
+        self.max_accel = float(rospy.get_param("~max_accel_mps2", 0.12))
+        self.max_decel = float(rospy.get_param("~max_decel_mps2", 0.18))
         self.output_spacing = float(rospy.get_param("~output_spacing", 0.20))
         self.corner_radius = float(rospy.get_param("~corner_radius", 0.35))
         self.cost_scaling_factor = float(rospy.get_param("~cost_scaling_factor", 3.0))
@@ -61,6 +63,10 @@ class PrivilegedTeacherNode:
         self.sampler = LocalReferenceSampler(
             max(2, int(rospy.get_param("~horizon_points", 10))),
             float(rospy.get_param("~local_spacing", 0.20)))
+        # The global topic is the hand-off to the runtime local planner.  The
+        # teacher_reference topic is retained for visualization/backward
+        # compatibility, but consumers should not re-project this already
+        # local window as if it were the global route.
         self.reference_pub = rospy.Publisher("/aquaflow/teacher_reference", Path, queue_size=1, latch=True)
         self.global_pub = rospy.Publisher("/aquaflow/teacher_global_path", Path, queue_size=1, latch=True)
         self.local_points_pub = rospy.Publisher("/aquaflow/teacher_local_points", MarkerArray,
@@ -169,8 +175,13 @@ class PrivilegedTeacherNode:
             return False
         smooth = shortcut_smooth(self.costmap, cells)
         smooth = round_corners(self.costmap, smooth, self.corner_radius)
+        if not path_is_free(self.costmap, smooth):
+            rospy.logwarn("teacher: smoothed path failed final collision check")
+            self.global_plan = None
+            return False
         self.global_plan = time_parameterize(smooth, goal[2], self.max_speed,
-                                             self.max_yaw_rate, self.output_spacing)
+                                             self.max_yaw_rate, self.output_spacing,
+                                             self.max_accel, self.max_decel)
         if self.global_plan and self.goal_yaw is not None:
             last = self.global_plan[-1]
             self.global_plan[-1] = (last[0], last[1], last[2], self.goal_yaw,

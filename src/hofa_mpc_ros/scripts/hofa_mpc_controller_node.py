@@ -12,7 +12,7 @@ import tf.transformations as tft
 from std_msgs.msg import Header, Bool, Empty
 from geometry_msgs.msg import WrenchStamped, AccelStamped, PoseStamped, Quaternion
 from nav_msgs.msg import Odometry, Path
-from hofa_mpc_ros.msg import TrajectoryPoint, ControllerStatus
+from hofa_mpc_ros.msg import TrajectoryPoint, TrajectoryPointWindow, ControllerStatus
 
 from hofa_mpc_ros.types import (
     VehicleParams, MPCParams, VehicleState, ReferencePoint,
@@ -47,6 +47,7 @@ class HofaMPCControllerNode:
         self.state_received = False
         self.state_time = 0.0
         self.ref = None
+        self.ref_window = None
         self.ref_time = 0.0
         self.prev_wrench = np.zeros(3)
         self.enabled = rospy.get_param("~enabled", False)
@@ -60,10 +61,6 @@ class HofaMPCControllerNode:
         self.odom_sub = rospy.Subscriber(
             odom_topic, Odometry, self._odom_cb, queue_size=10)
 
-        ref_topic = rospy.get_param("~ref_topic", "~reference")
-        self.ref_sub = rospy.Subscriber(
-            ref_topic, TrajectoryPoint, self._ref_cb, queue_size=10)
-
         self.enable_sub = rospy.Subscriber(
             "~enable", Bool, self._enable_cb, queue_size=1)
         self.reset_sub = rospy.Subscriber(
@@ -73,6 +70,9 @@ class HofaMPCControllerNode:
         self.traj_ref_sub = rospy.Subscriber(
             "/controller/reference_trajectory", TrajectoryPoint,
             self._traj_ref_cb, queue_size=1)
+        self.traj_window_sub = rospy.Subscriber(
+            "/controller/reference_trajectory_window", TrajectoryPointWindow,
+            self._traj_window_cb, queue_size=1)
 
         # --- Publishers ---
         wrench_topic = rospy.get_param(
@@ -180,10 +180,12 @@ class HofaMPCControllerNode:
         q = msg.pose.pose.orientation
         yaw_ned = tft.euler_from_quaternion([q.x, q.y, q.z, q.w])[2]
 
-        # NED body velocity (child_frame is "odometry" in Stonefish)
+        # Stonefish odometry velocities are already expressed in the sensor
+        # (body) frame; see Odometry::InternalUpdate, which applies the
+        # inverse sensor basis before publishing.  They must not be treated as
+        # world-frame velocities and rotated a second time.
         vx_ned = msg.twist.twist.linear.x
         vy_ned = msg.twist.twist.linear.y
-        vz_ned = msg.twist.twist.linear.z
         r_ned = msg.twist.twist.angular.z
 
         # Convert to ENU
@@ -192,15 +194,11 @@ class HofaMPCControllerNode:
         yaw_enu = math.pi / 2 - yaw_ned  # NED yaw -> ENU yaw
         yaw_enu = wrap_to_pi(yaw_enu)
 
-        # Convert world velocity NED -> ENU
-        dx_enu = vy_ned     # NED-vy (east vel) -> ENU-dx
-        dy_enu = vx_ned     # NED-vx (north vel) -> ENU-dy
-        r_enu = -r_ned      # NED CW positive -> ENU CCW positive
-
-        # Convert world velocity to body velocity (ENU/FLU)
-        c, s = math.cos(yaw_enu), math.sin(yaw_enu)
-        u_enu = c * dx_enu + s * dy_enu
-        v_enu = -s * dx_enu + c * dy_enu
+        # Convert body velocity NED/FRD -> body velocity ENU/FLU.  x is
+        # forward in both conventions; y and positive yaw change sign.
+        u_enu = vx_ned
+        v_enu = -vy_ned
+        r_enu = -r_ned
 
         self.state = VehicleState(
             x=x_enu, y=y_enu, psi=yaw_enu,
@@ -209,25 +207,6 @@ class HofaMPCControllerNode:
         )
         self.state_received = True
         self.state_time = stamp
-
-    def _ref_cb(self, msg):
-        """Handle TrajectoryPoint reference (from trajectory_server or
-        reference_processor). Both sources use the same message type."""
-        q = msg.pose.orientation
-        psi = tft.euler_from_quaternion([q.x, q.y, q.z, q.w])[2]
-
-        self.ref = ReferencePoint(
-            x=msg.pose.position.x,
-            y=msg.pose.position.y,
-            psi=psi,
-            dx=msg.twist.linear.x,
-            dy=msg.twist.linear.y,
-            dpsi=msg.twist.angular.z,
-            ddx=msg.accel.linear.x,
-            ddy=msg.accel.linear.y,
-            ddpsi=msg.accel.angular.z,
-        )
-        self.ref_time = msg.header.stamp.to_sec()
 
     def _enable_cb(self, msg):
         self.enabled = msg.data
@@ -246,24 +225,42 @@ class HofaMPCControllerNode:
         rospy.loginfo("Controller RESET")
 
     def _traj_ref_cb(self, msg):
-        """Handle TrajectoryPoint from reference_processor (arc-length projected).
-
-        This overrides the trajectory_server reference when available.
-        """
+        """Handle TrajectoryPoint from reference_processor (arc-length projected)."""
         q = msg.pose.orientation
         psi = tft.euler_from_quaternion([q.x, q.y, q.z, q.w])[2]
 
         self.ref = ReferencePoint(
-            x=msg.pose.position.x,
-            y=msg.pose.position.y,
-            psi=psi,
-            dx=msg.twist.linear.x,
-            dy=msg.twist.linear.y,
-            dpsi=msg.twist.angular.z,
-            ddx=msg.accel.linear.x,
-            ddy=msg.accel.linear.y,
-            ddpsi=msg.accel.angular.z,
+            # Reference processor publishes world_ned.  The controller's
+            # internal state/model are ENU/FLU, so convert every derivative,
+            # not only position and yaw.
+            x=msg.pose.position.y,
+            y=msg.pose.position.x,
+            psi=wrap_to_pi(math.pi / 2.0 - psi),
+            dx=msg.twist.linear.y,
+            dy=msg.twist.linear.x,
+            dpsi=-msg.twist.angular.z,
+            ddx=msg.accel.linear.y,
+            ddy=msg.accel.linear.x,
+            ddpsi=-msg.accel.angular.z,
         )
+        self.ref_time = msg.header.stamp.to_sec()
+
+    def _reference_from_msg(self, msg):
+        q = msg.pose.orientation
+        psi_ned = tft.euler_from_quaternion([q.x, q.y, q.z, q.w])[2]
+        return ReferencePoint(
+            x=msg.pose.position.y, y=msg.pose.position.x,
+            psi=wrap_to_pi(math.pi / 2.0 - psi_ned),
+            dx=msg.twist.linear.y, dy=msg.twist.linear.x,
+            dpsi=-msg.twist.angular.z,
+            ddx=msg.accel.linear.y, ddy=msg.accel.linear.x,
+            ddpsi=-msg.accel.angular.z)
+
+    def _traj_window_cb(self, msg):
+        if not msg.valid or not msg.points:
+            return
+        self.ref_window = [self._reference_from_msg(point) for point in msg.points]
+        self.ref = self.ref_window[0]
         self.ref_time = msg.header.stamp.to_sec()
 
     # --- Control loop ---
@@ -295,23 +292,22 @@ class HofaMPCControllerNode:
             self._publish_status(0, 0, 0, t_start)
             return
 
-        # Build reference horizon
+        # Use the complete local-planner window.  The fallback keeps the node
+        # compatible with old publishers, but no longer invents a horizon when
+        # the window topic is available.
         dt = 1.0 / self.mpc_params.control_rate_hz
-        refs = []
-        for i in range(self.mpc_params.horizon):
-            # For now, use constant reference (hover) or extend with velocity
-            r = ReferencePoint(
+        refs = list(self.ref_window or [])
+        if not refs:
+            refs = [ReferencePoint(
                 x=self.ref.x + self.ref.dx * i * dt,
                 y=self.ref.y + self.ref.dy * i * dt,
-                psi=self.ref.psi + self.ref.dpsi * i * dt,
-                dx=self.ref.dx,
-                dy=self.ref.dy,
-                dpsi=self.ref.dpsi,
-                ddx=self.ref.ddx,
-                ddy=self.ref.ddy,
-                ddpsi=self.ref.ddpsi,
-            )
-            refs.append(r)
+                psi=wrap_to_pi(self.ref.psi + self.ref.dpsi * i * dt),
+                dx=self.ref.dx, dy=self.ref.dy, dpsi=self.ref.dpsi,
+                ddx=self.ref.ddx, ddy=self.ref.ddy, ddpsi=self.ref.ddpsi)
+                for i in range(self.mpc_params.horizon)]
+        if len(refs) < self.mpc_params.horizon:
+            refs.extend([refs[-1]] * (self.mpc_params.horizon - len(refs)))
+        refs = refs[:self.mpc_params.horizon]
 
         # Compute virtual input bounds (Layer 1)
         t_layer1_start = time.time()
@@ -326,10 +322,8 @@ class HofaMPCControllerNode:
         sol = self.mpc.solve(self.state, refs, bounds=bounds)
         t_layer2_ms = (time.time() - t_layer2_start) * 1000
 
-        # Safety check on solver result
-        self.safety.on_solver_result(sol.success, sol.wrench)
-
         if not sol.success:
+            self.safety.on_solver_result(False, np.zeros(3))
             override, effective_state = self.safety.get_override_command(
                 self.controller_state)
             if override is not None:
@@ -352,6 +346,9 @@ class HofaMPCControllerNode:
 
         # Clamp
         wrench_enu = self.safety.validate_wrench(wrench_enu)
+        # Store the actual force command for degraded-mode hold.  The solver's
+        # MPCSolution.wrench field is not populated by the optimizer.
+        self.safety.on_solver_result(True, wrench_enu)
 
         # Convert FLU body force -> FRD body force for Stonefish
         # FLU: x-forward, y-left, z-up

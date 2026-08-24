@@ -3,14 +3,12 @@
   <!-- Arguments -->
   <arg name="vehicle_name" default="bricsbot"/>
   <arg name="vehicle_model" default="bricsbot"/>
-  <arg name="trajectory" default="hover"/>
   <arg name="controller" default="hofa_mpc" doc="hofa_mpc or pid"/>
-  <arg name="scene" default="empty_pool"/>
+  <arg name="scene" default="random_pillars"/>
   <arg name="enable" default="true"/>
 
-  <!-- Load parameters: trajectories and simulator at global level for all nodes -->
+  <!-- Load parameters at global level -->
   <rosparam command="load" file="$(find hofa_mpc_ros)/config/vehicle.yaml" />
-  <rosparam command="load" file="$(find hofa_mpc_ros)/config/trajectories.yaml" />
   <rosparam command="load" file="$(find hofa_mpc_ros)/config/simulator_interface.yaml" />
 
   <!-- 1. Start Stonefish simulator (via aquaflow_pool.launch) -->
@@ -31,17 +29,7 @@
     <param name="enabled" value="$(arg enable)"/>
   </node>
 
-  <!-- 3. Start trajectory server -->
-  <node pkg="hofa_mpc_ros" type="trajectory_server_node.py"
-        name="trajectory_server" output="screen">
-    <param name="trajectory" value="$(arg trajectory)"/>
-    <param name="default_trajectory" value="$(arg trajectory)"/>
-    <param name="startup_time_s" value="3.0"/>
-    <param name="yaw_mode" value="tangent"/>
-    <remap from="~reference" to="/hofa_mpc/reference"/>
-  </node>
-
-  <!-- 3b. Reference processor: arc-length projection + lookahead -->
+  <!-- 3. Reference processor: arc-length projection + lookahead -->
   <node pkg="hofa_mpc_ros" type="reference_processor.py"
         name="reference_processor" output="screen">
     <rosparam command="load" file="$(find hofa_mpc_ros)/config/reference_processor.yaml" />
@@ -58,7 +46,6 @@
       <rosparam command="load" file="$(find hofa_mpc_ros)/config/safety.yaml" />
       <param name="vehicle_name" value="$(arg vehicle_name)"/>
       <param name="odom_topic" value="/$(arg vehicle_name)/odometry"/>
-      <param name="ref_topic" value="/hofa_mpc/reference"/>
       <param name="wrench_topic" value="/controller/generalized_force"/>
       <param name="enabled" value="$(arg enable)"/>
     </node>

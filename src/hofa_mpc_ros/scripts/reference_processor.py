@@ -16,7 +16,7 @@ import rospy
 from geometry_msgs.msg import PoseStamped, Quaternion, Point
 from nav_msgs.msg import Odometry, Path
 from std_msgs.msg import Header
-from hofa_mpc_ros.msg import TrajectoryPoint
+from hofa_mpc_ros.msg import TrajectoryPoint, TrajectoryPointWindow
 
 
 def _wrap(angle):
@@ -44,6 +44,8 @@ class ReferenceProcessor:
         self.n_resample = int(rospy.get_param("~n_resample_points", 20))
         self.max_speed = float(rospy.get_param("~max_speed", 0.35))
         self.max_yaw_rate = float(rospy.get_param("~max_yaw_rate", 0.5))
+        self.max_accel = max(1e-3, float(rospy.get_param("~max_accel_mps2", 0.12)))
+        self.max_decel = max(1e-3, float(rospy.get_param("~max_decel_mps2", 0.18)))
         self.s_backtrack_tol = float(
             rospy.get_param("~s_backtrack_tolerance_m", 0.5))
         rate = float(rospy.get_param("~rate", 20.0))
@@ -57,6 +59,7 @@ class ReferenceProcessor:
         self.s_progress = 0.0
         self.prev_speed = 0.0
         self.path_stamp = None
+        self.path_signature = None
 
         # --- Arc-length path from incoming Path ---
         self._raw_x = None
@@ -74,6 +77,8 @@ class ReferenceProcessor:
             "/controller/reference_path", Path, queue_size=1)
         self.traj_pub = rospy.Publisher(
             "/controller/reference_trajectory", TrajectoryPoint, queue_size=1)
+        self.traj_window_pub = rospy.Publisher(
+            "/controller/reference_trajectory_window", TrajectoryPointWindow, queue_size=1)
 
         # --- Timer ---
         self.timer = rospy.Timer(rospy.Duration(1.0 / rate), self._update)
@@ -106,7 +111,8 @@ class ReferenceProcessor:
             y[i] = ps.pose.position.y
             z[i] = ps.pose.position.z
 
-        # Compute yaw from consecutive points (tangent direction)
+        # Compute yaw from the geometric tangent.  Do not trust the incoming
+        # pose yaw: the global route's tangent is the canonical heading.
         yaw = np.zeros(n)
         for i in range(n - 1):
             yaw[i] = math.atan2(y[i + 1] - y[i], x[i + 1] - x[i])
@@ -130,20 +136,42 @@ class ReferenceProcessor:
             s[i] = s[i - 1] + ds
         total_length = s[-1]
 
-        # Speed from curvature (kinematic limit, same as time_parameterize)
-        speed = np.full(n, self.max_speed)
+        # Signed curvature from the arc-length tangent.  The old code used
+        # |dyaw|/ds, which overestimates curvature at wrapped angles and does
+        # not distinguish left/right turns.
+        curvature = np.zeros(n)
         for i in range(1, n - 1):
-            ds = max(s[i + 1] - s[i], 1e-6)
-            curvature = abs(_wrap(yaw[i + 1] - yaw[i])) / ds
-            spd = min(self.max_speed,
-                      self.max_yaw_rate / max(curvature, 1e-6))
-            speed[i] = max(0.08, spd)
-        speed[0] = speed[1] if n >= 2 else self.max_speed
-        speed[-1] = 0.0  # stop at goal
+            ds = max(s[i + 1] - s[i - 1], 1e-6)
+            curvature[i] = _wrap(yaw[i + 1] - yaw[i - 1]) / ds
+        if n > 1:
+            curvature[0] = curvature[1]
+            curvature[-1] = curvature[-2]
 
+        # Curvature-limited speed followed by forward/backward acceleration
+        # passes.  This creates a physically continuous speed profile instead
+        # of independently changing speed at every point.
+        speed_limit = np.minimum(self.max_speed,
+                                 self.max_yaw_rate / np.maximum(np.abs(curvature), 1e-6))
+        speed_limit = np.maximum(speed_limit, 0.08)
+        speed = speed_limit.copy()
+        speed[0] = min(speed[0], self.prev_speed if self.prev_speed > 0.0 else speed[0])
+        for i in range(1, n):
+            ds = max(s[i] - s[i - 1], 1e-6)
+            speed[i] = min(speed[i], math.sqrt(max(0.0, speed[i - 1] ** 2 + 2.0 * self.max_accel * ds)))
+        speed[-1] = 0.0
+        for i in range(n - 2, -1, -1):
+            ds = max(s[i + 1] - s[i], 1e-6)
+            speed[i] = min(speed[i], math.sqrt(max(0.0, speed[i + 1] ** 2 + 2.0 * self.max_decel * ds)))
+        self.prev_speed = float(speed[0])
+
+        signature = (float(x[0]), float(y[0]), float(x[-1]), float(y[-1]), int(n))
+        if self.path_signature is not None and signature != self.path_signature:
+            self.s_progress = 0.0
+            self.prev_speed = 0.0
+        self.path_signature = signature
         self.arc_path = {
             'x': x, 'y': y, 'z': z,
-            'yaw': yaw, 'speed': speed, 's': s,
+            'yaw': yaw, 'curvature': curvature, 'speed': speed, 's': s,
             'total_length': total_length,
         }
 
@@ -174,8 +202,9 @@ class ReferenceProcessor:
         s_proj = self._project_to_curve(self.robot_xy[0], self.robot_xy[1])
 
         # ② Clamp: allow small backtrack, enforce monotonic advance
+        # Permit bounded backtracking after a disturbance, but prevent a
+        # projection jump to an earlier route branch.
         s_proj = max(s_proj, self.s_progress - self.s_backtrack_tol)
-        s_proj = max(s_proj, self.s_progress)  # monotonic in normal case
         s_proj = min(s_proj, self.arc_path['total_length'])
         self.s_progress = s_proj
 
@@ -240,6 +269,7 @@ class ReferenceProcessor:
         z = self.arc_path['z']
         yaw = self.arc_path['yaw']
         speed = self.arc_path['speed']
+        curvature = self.arc_path['curvature']
 
         s_values = np.linspace(s_start, s_end, n_points)
         points = []
@@ -269,6 +299,7 @@ class ReferenceProcessor:
                 'x': px, 'y': py, 'z': pz,
                 'yaw': pyaw, 'speed': pspeed,
                 'dx': dx, 'dy': dy,
+                'curvature': _lerp(curvature[idx], curvature[idx + 1], t),
             })
 
         return points
@@ -305,43 +336,39 @@ class ReferenceProcessor:
         """
         if len(local) < 2:
             return
-
-        ref = local[0]
-        ref_next = local[1]
-
-        # Estimate dt from speed and distance to next point
-        ds = math.hypot(ref_next['x'] - ref['x'],
-                        ref_next['y'] - ref['y'])
-        avg_speed = max(0.08, 0.5 * (ref['speed'] + ref_next['speed']))
-        dt = ds / avg_speed if avg_speed > 1e-3 else 0.1
-
-        # Acceleration: (v_next - v_current) / dt
-        ddx = (ref_next['dx'] - ref['dx']) / dt if dt > 1e-3 else 0.0
-        ddy = (ref_next['dy'] - ref['dy']) / dt if dt > 1e-3 else 0.0
-        # Yaw acceleration from yaw rate difference
-        dpsi_cur = ref['speed'] * 0.0  # placeholder: no explicit yaw rate
-        dpsi_nxt = ref_next['speed'] * 0.0
-        ddpsi = 0.0
-
-        msg = TrajectoryPoint()
-        msg.header.stamp = now
-        msg.header.frame_id = "world_ned"
-        msg.pose.position.x = ref['x']
-        msg.pose.position.y = ref['y']
-        msg.pose.position.z = ref['z']
-        msg.pose.orientation = self._yaw_to_quat(ref['yaw'])
-        msg.twist.linear.x = ref['dx']
-        msg.twist.linear.y = ref['dy']
-        msg.twist.linear.z = 0.0
-        msg.twist.angular.z = ref['speed'] * math.tan(0.0)  # placeholder
-        msg.accel.linear.x = ddx
-        msg.accel.linear.y = ddy
-        msg.accel.linear.z = 0.0
-        msg.accel.angular.z = ddpsi
-        msg.valid = True
-        msg.trajectory_id = "arc_length"
-
-        self.traj_pub.publish(msg)
+        points = []
+        for i, ref in enumerate(local):
+            if i == 0:
+                j = 1
+            else:
+                j = i
+            prev = local[max(0, i - 1)]
+            nxt = local[min(len(local) - 1, i + 1)]
+            ds = math.hypot(nxt['x'] - prev['x'], nxt['y'] - prev['y'])
+            avg_speed = max(0.08, 0.5 * (prev['speed'] + nxt['speed']))
+            dt = max(1e-3, ds / avg_speed)
+            ddx = (nxt['dx'] - prev['dx']) / dt
+            ddy = (nxt['dy'] - prev['dy']) / dt
+            dpsi = ref['speed'] * ref.get('curvature', 0.0)
+            dpsi_prev = prev['speed'] * prev.get('curvature', 0.0)
+            dpsi_next = nxt['speed'] * nxt.get('curvature', 0.0)
+            ddpsi = (dpsi_next - dpsi_prev) / dt
+            point = TrajectoryPoint()
+            point.header.stamp = now
+            point.header.frame_id = "world_ned"
+            point.pose.position.x, point.pose.position.y, point.pose.position.z = ref['x'], ref['y'], ref['z']
+            point.pose.orientation = self._yaw_to_quat(ref['yaw'])
+            point.twist.linear.x, point.twist.linear.y = ref['dx'], ref['dy']
+            point.twist.angular.z = dpsi
+            point.accel.linear.x, point.accel.linear.y = ddx, ddy
+            point.accel.angular.z = ddpsi
+            point.valid, point.trajectory_id = True, "arc_length"
+            points.append(point)
+        window = TrajectoryPointWindow(header=Header(stamp=now, frame_id="world_ned"),
+                                       points=points, valid=True, trajectory_id="arc_length")
+        self.traj_window_pub.publish(window)
+        # Keep publishing the first point for legacy consumers.
+        self.traj_pub.publish(points[0])
 
 
 if __name__ == "__main__":

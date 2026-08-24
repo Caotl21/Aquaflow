@@ -14,6 +14,7 @@ catkin_python_setup()
 add_message_files(
   FILES
   TrajectoryPoint.msg
+  TrajectoryPointWindow.msg
   ControllerStatus.msg
   ActuatorStatus.msg
 )

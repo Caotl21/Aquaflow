@@ -218,8 +218,20 @@ def round_corners(costmap, points, radius=0.35, samples_per_corner=8):
     return result
 
 
-def time_parameterize(points, z, max_speed, max_yaw_rate, output_spacing):
-    """Resample a geometric route and assign yaw, speed and relative time."""
+def path_is_free(costmap, points):
+    """Collision-check every segment of a world-coordinate route."""
+    return bool(points) and all(_world_segment_is_free(costmap, a, b)
+                                for a, b in zip(points[:-1], points[1:]))
+
+
+def time_parameterize(points, z, max_speed, max_yaw_rate, output_spacing,
+                      max_accel=0.12, max_decel=0.18):
+    """Arc-length resample a geometric route and assign smooth timing.
+
+    Speed is first limited by curvature/yaw-rate, then passed through forward
+    and backward acceleration envelopes.  This avoids the old pointwise speed
+    jumps at corners and guarantees the final point is stationary.
+    """
     if not points:
         return []
     sampled = []
@@ -231,20 +243,44 @@ def time_parameterize(points, z, max_speed, max_yaw_rate, output_spacing):
     sampled.append(points[-1])
     if len(sampled) == 1:
         return [(sampled[0][0], sampled[0][1], z, 0.0, 0.0, 0.0)]
+    # Remove numerical duplicates before differentiating the tangent.
+    compact = [sampled[0]]
+    for p in sampled[1:]:
+        if distance(compact[-1], p) > 1e-8:
+            compact.append(p)
+    sampled = compact
+    if len(sampled) == 1:
+        return [(sampled[0][0], sampled[0][1], z, 0.0, 0.0, 0.0)]
+    cumulative = [0.0]
+    for a, b in zip(sampled[:-1], sampled[1:]):
+        cumulative.append(cumulative[-1] + distance(a, b))
+
     yaws = []
     for i, point in enumerate(sampled):
         nxt = sampled[min(i + 1, len(sampled) - 1)]
         prev = sampled[max(i - 1, 0)]
         yaws.append(math.atan2(nxt[1] - prev[1], nxt[0] - prev[0]))
-    speeds, times = [max_speed], [0.0]
-    for i in range(1, len(sampled)):
-        ds = max(distance(sampled[i - 1], sampled[i]), 1e-6)
-        curvature = abs(wrap(yaws[i] - yaws[i - 1])) / ds
-        speed = min(max_speed, max_yaw_rate / max(curvature, 1e-6))
-        speed = max(0.08, speed)
-        speeds.append(speed)
-        times.append(times[-1] + ds / max(0.08, 0.5 * (speeds[-1] + speeds[-2])))
+    curvature = [0.0] * len(sampled)
+    for i in range(1, len(sampled) - 1):
+        ds = max(cumulative[i + 1] - cumulative[i - 1], 1e-6)
+        curvature[i] = wrap(yaws[i + 1] - yaws[i - 1]) / ds
+    if len(sampled) > 1:
+        curvature[0] = curvature[1]
+        curvature[-1] = curvature[-2]
+    speeds = [min(max_speed, max_yaw_rate / max(abs(k), 1e-6))
+              for k in curvature]
+    speeds = [max(0.08, v) for v in speeds]
     speeds[-1] = 0.0
+    for i in range(1, len(speeds)):
+        ds = max(cumulative[i] - cumulative[i - 1], 1e-6)
+        speeds[i] = min(speeds[i], math.sqrt(max(0.0, speeds[i - 1] ** 2 + 2.0 * max_accel * ds)))
+    for i in range(len(speeds) - 2, -1, -1):
+        ds = max(cumulative[i + 1] - cumulative[i], 1e-6)
+        speeds[i] = min(speeds[i], math.sqrt(max(0.0, speeds[i + 1] ** 2 + 2.0 * max_decel * ds)))
+    times = [0.0]
+    for i in range(1, len(sampled)):
+        ds = max(cumulative[i] - cumulative[i - 1], 1e-6)
+        times.append(times[-1] + ds / max(0.08, 0.5 * (speeds[i - 1] + speeds[i])))
     return [(point[0], point[1], z, yaws[i], speeds[i], times[i])
             for i, point in enumerate(sampled)]
 
