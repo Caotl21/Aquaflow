@@ -1,0 +1,32 @@
+<launch>
+  <!-- BricsBot thruster direction test launch file -->
+  <!-- This launches: simulator + thruster allocator + test command publisher -->
+
+  <!-- Simulation -->
+  <include file="$(find stonefish_ros)/launch/simulator.launch">
+    <arg name="simulation_data" value="$(find aquaflow_stonefish)/data"/>
+    <arg name="scenario_description" value="$(find aquaflow_stonefish)/scenarios/bricsbot_pool.scn"/>
+    <arg name="simulation_rate" value="100.0"/>
+    <arg name="graphics_resolution" value="1200 800"/>
+    <arg name="graphics_quality" value="medium"/>
+  </include>
+
+  <!-- Thruster allocator -->
+  <node pkg="aquaflow_stonefish" type="brics6_thruster_allocator.py"
+        name="brics6_thruster_allocator" output="screen">
+    <param name="vehicle_name" value="bricsbot"/>
+  </node>
+
+  <!-- Test command publisher: forward motion (10N in +X direction) -->
+  <!-- Change the 'mode' parameter to test different motions: forward, lateral, yaw, backward -->
+  <node pkg="aquaflow_stonefish" type="thruster_test_publisher.py"
+        name="thruster_test_publisher" output="screen">
+    <param name="mode" value="backward"/>
+  </node>
+
+  <!-- PWM output monitor (optional) -->
+  <node pkg="rostopic" type="rostopic" name="pwm_monitor"
+        args="echo /bricsbot/setpoint/pwm"
+        output="screen" launch-prefix="bash -c 'sleep 3; $0 $@' "/>
+
+</launch>

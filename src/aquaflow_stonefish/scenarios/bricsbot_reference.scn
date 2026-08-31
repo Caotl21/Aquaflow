@@ -58,32 +58,34 @@
       </internal_part>
     </base_link>
 
-    <!-- T1..T4: horizontal 45-degree configuration. -->
+    <!-- T1..T4: horizontal thrusters matching hand-drawn diagram.
+         T1/T2 are CCW propellers, T3/T4 are CW propellers.
+         T2 and T4 are flipped 180° installations. -->
     <actuator name="T1" type="thruster">
-      <link name="base_link"/><origin xyz="0.1278 -0.1278 0" rpy="0 0 0.7853981634"/>
+      <link name="base_link"/><origin xyz="0.12755 -0.12755 0" rpy="0 0 0.7853981634"/>
       <specs max_setpoint="376.991118" inverted_setpoint="false" normalized_setpoint="true"/>
-      <propeller diameter="0.076" right="true"><mesh filename="bluerov2/ccw.obj" scale="1"/><material name="Neutral"/><look name="bricsbot_dark"/></propeller>
+      <propeller diameter="0.076" right="true"><mesh filename="bluerov2/cw.obj" scale="1"/><material name="Neutral"/><look name="bricsbot_dark"/></propeller>
       <rotor_dynamics type="zero_order"/>
       <thrust_model type="linear_interpolation"><input value="-376.991118 -357.149480 -337.307842 -317.466205 -297.624567 -277.782929 -257.941291 -238.099653 -218.258016 -198.416378 -178.574740 -158.733102 -138.891465 -119.049827 -99.208189 -79.366551 -59.524913 -39.683276 -19.841638 0.000000 19.841638 39.683276 59.524913 79.366551 99.208189 119.049827 138.891465 158.733102 178.574740 198.416378 218.258016 238.099653 257.941291 277.782929 297.624567 317.466205 337.307842 357.149480 376.991118"/><output value="-58.839900 -58.839900 -56.878570 -54.917240 -48.052585 -43.149260 -38.245935 -34.323275 -28.439285 -23.535960 -18.632635 -14.709975 -10.787315 -7.845320 -4.903325 -2.941995 -0.980665 0.000000 0.000000 0.000000 0.000000 1.961330 3.922660 7.845320 11.767980 16.671305 20.593965 26.477955 32.361945 37.265270 44.129925 48.052585 53.936575 57.859235 63.743225 64.723890 64.723890 67.665885 67.665885"/></thrust_model>
     </actuator>
     <actuator name="T2" type="thruster">
-      <link name="base_link"/><origin xyz="0.1273 0.1273 0" rpy="0 0 2.3561944902"/>
-      <specs max_setpoint="376.991118" inverted_setpoint="true" normalized_setpoint="true"/>
-      <propeller diameter="0.076" right="false"><mesh filename="bluerov2/cw.obj" scale="1"/><material name="Neutral"/><look name="bricsbot_dark"/></propeller>
+      <link name="base_link"/><origin xyz="0.12755 0.12755 0" rpy="0 0 -0.7853981634"/>
+      <specs max_setpoint="376.991118" inverted_setpoint="false" normalized_setpoint="true"/>
+      <propeller diameter="0.076" right="true"><mesh filename="bluerov2/cw.obj" scale="1"/><material name="Neutral"/><look name="bricsbot_dark"/></propeller>
       <rotor_dynamics type="zero_order"/>
       <thrust_model type="linear_interpolation"><input value="-376.991118 -357.149480 -337.307842 -317.466205 -297.624567 -277.782929 -257.941291 -238.099653 -218.258016 -198.416378 -178.574740 -158.733102 -138.891465 -119.049827 -99.208189 -79.366551 -59.524913 -39.683276 -19.841638 0.000000 19.841638 39.683276 59.524913 79.366551 99.208189 119.049827 138.891465 158.733102 178.574740 198.416378 218.258016 238.099653 257.941291 277.782929 297.624567 317.466205 337.307842 357.149480 376.991118"/><output value="-58.839900 -58.839900 -56.878570 -54.917240 -48.052585 -43.149260 -38.245935 -34.323275 -28.439285 -23.535960 -18.632635 -14.709975 -10.787315 -7.845320 -4.903325 -2.941995 -0.980665 0.000000 0.000000 0.000000 0.000000 1.961330 3.922660 7.845320 11.767980 16.671305 20.593965 26.477955 32.361945 37.265270 44.129925 48.052585 53.936575 57.859235 63.743225 64.723890 64.723890 67.665885 67.665885"/></thrust_model>
     </actuator>
     <actuator name="T3" type="thruster">
-      <link name="base_link"/><origin xyz="-0.1278 -0.1278 0" rpy="0 0 2.3561944902"/>
+      <link name="base_link"/><origin xyz="-0.12755 -0.12755 0" rpy="0 0 2.3561944902"/>
       <specs max_setpoint="376.991118" inverted_setpoint="false" normalized_setpoint="true"/>
       <propeller diameter="0.076" right="true"><mesh filename="bluerov2/ccw.obj" scale="1"/><material name="Neutral"/><look name="bricsbot_dark"/></propeller>
       <rotor_dynamics type="zero_order"/>
       <thrust_model type="linear_interpolation"><input value="-376.991118 -357.149480 -337.307842 -317.466205 -297.624567 -277.782929 -257.941291 -238.099653 -218.258016 -198.416378 -178.574740 -158.733102 -138.891465 -119.049827 -99.208189 -79.366551 -59.524913 -39.683276 -19.841638 0.000000 19.841638 39.683276 59.524913 79.366551 99.208189 119.049827 138.891465 158.733102 178.574740 198.416378 218.258016 238.099653 257.941291 277.782929 297.624567 317.466205 337.307842 357.149480 376.991118"/><output value="-58.839900 -58.839900 -56.878570 -54.917240 -48.052585 -43.149260 -38.245935 -34.323275 -28.439285 -23.535960 -18.632635 -14.709975 -10.787315 -7.845320 -4.903325 -2.941995 -0.980665 0.000000 0.000000 0.000000 0.000000 1.961330 3.922660 7.845320 11.767980 16.671305 20.593965 26.477955 32.361945 37.265270 44.129925 48.052585 53.936575 57.859235 63.743225 64.723890 64.723890 67.665885 67.665885"/></thrust_model>
     </actuator>
     <actuator name="T4" type="thruster">
-      <link name="base_link"/><origin xyz="-0.1273 0.1273 0" rpy="0 0 0.7853981634"/>
-      <specs max_setpoint="376.991118" inverted_setpoint="true" normalized_setpoint="true"/>
-      <propeller diameter="0.076" right="false"><mesh filename="bluerov2/cw.obj" scale="1"/><material name="Neutral"/><look name="bricsbot_dark"/></propeller>
+      <link name="base_link"/><origin xyz="-0.12755 0.12755 0" rpy="0 0 -2.3561944902"/>
+      <specs max_setpoint="376.991118" inverted_setpoint="false" normalized_setpoint="true"/>
+      <propeller diameter="0.076" right="true"><mesh filename="bluerov2/ccw.obj" scale="1"/><material name="Neutral"/><look name="bricsbot_dark"/></propeller>
       <rotor_dynamics type="zero_order"/>
       <thrust_model type="linear_interpolation"><input value="-376.991118 -357.149480 -337.307842 -317.466205 -297.624567 -277.782929 -257.941291 -238.099653 -218.258016 -198.416378 -178.574740 -158.733102 -138.891465 -119.049827 -99.208189 -79.366551 -59.524913 -39.683276 -19.841638 0.000000 19.841638 39.683276 59.524913 79.366551 99.208189 119.049827 138.891465 158.733102 178.574740 198.416378 218.258016 238.099653 257.941291 277.782929 297.624567 317.466205 337.307842 357.149480 376.991118"/><output value="-58.839900 -58.839900 -56.878570 -54.917240 -48.052585 -43.149260 -38.245935 -34.323275 -28.439285 -23.535960 -18.632635 -14.709975 -10.787315 -7.845320 -4.903325 -2.941995 -0.980665 0.000000 0.000000 0.000000 0.000000 1.961330 3.922660 7.845320 11.767980 16.671305 20.593965 26.477955 32.361945 37.265270 44.129925 48.052585 53.936575 57.859235 63.743225 64.723890 64.723890 67.665885 67.665885"/></thrust_model>
     </actuator>
@@ -99,8 +101,8 @@
     </actuator>
     <actuator name="T6" type="thruster">
       <link name="base_link"/><origin xyz="0 0.1235 0" rpy="0 -1.5707963268 0"/>
-      <specs max_setpoint="376.991118" inverted_setpoint="true" normalized_setpoint="true"/>
-      <propeller diameter="0.076" right="false"><mesh filename="bluerov2/cw.obj" scale="1"/><material name="Neutral"/><look name="bricsbot_dark"/></propeller>
+      <specs max_setpoint="376.991118" inverted_setpoint="false" normalized_setpoint="true"/>
+      <propeller diameter="0.076" right="true"><mesh filename="bluerov2/cw.obj" scale="1"/><material name="Neutral"/><look name="bricsbot_dark"/></propeller>
       <rotor_dynamics type="zero_order"/>
       <thrust_model type="linear_interpolation"><input value="-376.991118 -357.149480 -337.307842 -317.466205 -297.624567 -277.782929 -257.941291 -238.099653 -218.258016 -198.416378 -178.574740 -158.733102 -138.891465 -119.049827 -99.208189 -79.366551 -59.524913 -39.683276 -19.841638 0.000000 19.841638 39.683276 59.524913 79.366551 99.208189 119.049827 138.891465 158.733102 178.574740 198.416378 218.258016 238.099653 257.941291 277.782929 297.624567 317.466205 337.307842 357.149480 376.991118"/><output value="-58.839900 -58.839900 -56.878570 -54.917240 -48.052585 -43.149260 -38.245935 -34.323275 -28.439285 -23.535960 -18.632635 -14.709975 -10.787315 -7.845320 -4.903325 -2.941995 -0.980665 0.000000 0.000000 0.000000 0.000000 1.961330 3.922660 7.845320 11.767980 16.671305 20.593965 26.477955 32.361945 37.265270 44.129925 48.052585 53.936575 57.859235 63.743225 64.723890 64.723890 67.665885 67.665885"/></thrust_model>
     </actuator>
