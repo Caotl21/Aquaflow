@@ -55,10 +55,14 @@
     <node pkg="aquaflow_stonefish" type="planar_pid_tracker.py"
           name="planar_pid_tracker" output="screen">
       <param name="vehicle_name" value="$(arg vehicle_name)"/>
-      <param name="kp_xy" value="15.0"/>
-      <param name="kd_xy" value="3.0"/>
+      <param name="kp_xy" value="100.0"/>  <!-- 增大xy增益 -->
+      <param name="kd_xy" value="10.0"/>  <!-- 增大阻尼 -->
+      <param name="ki_xy" value="0.5"/>   <!-- 添加积分 -->
       <param name="kp_yaw" value="4.0"/>
       <param name="kd_yaw" value="1.0"/>
+      <param name="max_fx" value="20.0"/> <!-- 增大力限制 -->
+      <param name="max_fy" value="20.0"/>
+      <param name="max_nz" value="3.0"/>
       <param name="reference_topic" value="/controller/reference_path"/>
     </node>
   </group>

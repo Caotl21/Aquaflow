@@ -131,6 +131,18 @@ Visualization Manager:
         aquaflow_actual_path: true
       Queue Size: 10
       Value: true
+    - Class: rviz/Image
+      Enabled: true
+      Image Topic: /bricsbot/camera_front/image_color
+      Max Value: 1
+      Median window: 5
+      Min Value: 0
+      Name: Front Camera
+      Normalize Range: true
+      Queue Size: 2
+      Transport Hint: raw
+      Unreliable: false
+      Value: true
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
@@ -157,3 +169,5 @@ Visualization Manager:
 Window Geometry:
   Height: 900
   Width: 1450
+  Front Camera:
+    collapsed: false

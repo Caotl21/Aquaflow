@@ -119,6 +119,23 @@
       <ros_publisher topic="/$(arg vehicle_name)/pressure"/>
     </sensor>
 
+    <!-- Forward-looking camera.  The hull's front face sits at body x=+0.1914
+         (bounding box of bricsbot_collision_candidate.obj), so mount just
+         ahead of it to avoid rendering the inside of the shell.  y=0 keeps
+         T1/T2 (at y=+-0.128) out of frame; z=-0.03 is 3 cm above the body
+         origin, since NED z points down.
+         rpy=(pi/2, 0, pi/2) maps the optical frame onto the body axes:
+         camera +Z -> body +X (forward), +X -> +Y (starboard), +Y -> +Z (down).
+         Publishes /bricsbot/camera_front/image_color and .../camera_info;
+         the image frame_id is "bricsbot/camera_front". -->
+    <sensor name="camera_front" rate="30.0" type="camera">
+      <specs resolution_x="640" resolution_y="480" horizontal_fov="80.0"/>
+      <rendering minimum_distance="0.05" maximum_distance="100.0"/>
+      <origin xyz="0.20 0.0 0.0" rpy="1.5707963268 0.0 1.5707963268"/>
+      <link name="base_link"/>
+      <ros_publisher topic="/$(arg vehicle_name)/camera_front"/>
+    </sensor>
+
     <world_transform xyz="$(arg position)" rpy="$(arg orientation)"/>
     <ros_subscriber thrusters="/$(arg vehicle_name)/setpoint/pwm"/>
   </robot>

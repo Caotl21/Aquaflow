@@ -31,4 +31,14 @@
     <arg name="graphics_resolution" value="$(arg graphics_resolution)"/>
     <arg name="graphics_quality" value="$(arg graphics_quality)"/>
   </include>
+
+  <!-- Stonefish only broadcasts world_ned -> <robot>/base_link, so the camera
+       optical frame referenced by the image/camera_info header has no parent
+       in TF.  Publish it here; the numbers mirror the <origin> of the
+       camera_front sensor in bricsbot_reference.scn (static_transform_publisher
+       takes x y z yaw pitch roll). -->
+  <node if="$(eval arg('vehicle_model') == 'bricsbot')"
+        pkg="tf2_ros" type="static_transform_publisher"
+        name="bricsbot_camera_front_tf"
+        args="0.20 0.0 -0.03 1.5707963268 0.0 1.5707963268 bricsbot/base_link bricsbot/camera_front"/>
 </launch>

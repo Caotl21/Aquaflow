@@ -155,8 +155,8 @@ class HofaMPC:
                 # local planner supplies a full trajectory window.
                 if i < Np - 1:
                     ref_delta = np.concatenate([
-                        refs[i].pose_array() - refs[i + 1].pose_array(),
-                        refs[i].velocity_array() - refs[i + 1].velocity_array()])
+                        refs[i + 1].pose_array() - refs[i].pose_array(),
+                        refs[i + 1].velocity_array() - refs[i].velocity_array()])
                 else:
                     ref_delta = np.zeros(6)
                 z = self.Ad @ z + self.Bd @ w_seq[i]
@@ -212,8 +212,8 @@ class HofaMPC:
             z_pred = self.Ad @ z_pred + self.Bd @ w_opt[i]
             if i < Np - 1:
                 z_pred += np.concatenate([
-                    refs[i].pose_array() - refs[i + 1].pose_array(),
-                    refs[i].velocity_array() - refs[i + 1].velocity_array()])
+                    refs[i + 1].pose_array() - refs[i].pose_array(),
+                    refs[i + 1].velocity_array() - refs[i].velocity_array()])
             predicted_path[i] = z_pred[:3] + refs[min(i + 1, Np - 1)].pose_array()
 
         return MPCSolution(
