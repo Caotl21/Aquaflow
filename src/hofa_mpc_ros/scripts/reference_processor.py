@@ -42,6 +42,9 @@ class ReferenceProcessor:
         self.lookahead_distance = float(
             rospy.get_param("~lookahead_distance_m", 1.5))
         self.n_resample = int(rospy.get_param("~n_resample_points", 20))
+        self.mpc_horizon_points = max(
+            2, int(rospy.get_param("~mpc_horizon_points", 20)))
+        self.mpc_dt = max(1e-3, float(rospy.get_param("~mpc_dt_s", 0.1)))
         self.max_speed = float(rospy.get_param("~max_speed", 0.35))
         self.max_yaw_rate = float(rospy.get_param("~max_yaw_rate", 0.5))
         self.max_accel = max(1e-3, float(rospy.get_param("~max_accel_mps2", 0.12)))
@@ -164,6 +167,16 @@ class ReferenceProcessor:
             speed[i] = min(speed[i], math.sqrt(max(0.0, speed[i + 1] ** 2 + 2.0 * self.max_decel * ds)))
         self.prev_speed = float(speed[0])
 
+        # Build a monotonic time-of-arrival table from the spatial speed
+        # profile.  This is used only for the MPC window; PID keeps receiving
+        # the original spatially uniform path.  The minimum denominator avoids
+        # an infinite interval at the stationary goal point.
+        time_from_start = np.zeros(n)
+        for i in range(1, n):
+            ds = max(s[i] - s[i - 1], 1e-9)
+            avg_speed = max(0.08, 0.5 * (speed[i - 1] + speed[i]))
+            time_from_start[i] = time_from_start[i - 1] + ds / avg_speed
+
         signature = (float(x[0]), float(y[0]), float(x[-1]), float(y[-1]), int(n))
         if self.path_signature is not None and signature != self.path_signature:
             self.s_progress = 0.0
@@ -172,6 +185,7 @@ class ReferenceProcessor:
         self.arc_path = {
             'x': x, 'y': y, 'z': z,
             'yaw': yaw, 'curvature': curvature, 'speed': speed, 's': s,
+            'time': time_from_start,
             'total_length': total_length,
         }
 
@@ -218,13 +232,18 @@ class ReferenceProcessor:
             s_start = max(0.0, s_end - self.lookahead_distance)
 
         # ④ Resample window into N uniform points
-        local = self._resample_window(s_start, s_end, self.n_resample)
-        if not local:
+        # Keep the spatially uniform path for PID and visualization.  MPC gets
+        # a separate time-uniform window so its i-th point matches its fixed
+        # prediction interval dt.
+        local_spatial = self._resample_window(s_start, s_end, self.n_resample)
+        local_temporal = self._resample_time_window(
+            s_start, self.mpc_horizon_points, self.mpc_dt)
+        if not local_spatial or not local_temporal:
             return
 
         # ⑤ Publish
-        self._publish_path(local, now)
-        self._publish_trajectory(local, now)
+        self._publish_path(local_spatial, now)
+        self._publish_trajectory(local_temporal, now, sample_dt=self.mpc_dt)
 
     # --- Arc-length projection ---
 
@@ -261,6 +280,35 @@ class ReferenceProcessor:
 
     # --- Window resampling ---
 
+    def _sample_at_s(self, sv):
+        """Interpolate one path sample at arc length ``sv``."""
+        s_arr = self.arc_path['s']
+        x = self.arc_path['x']
+        y = self.arc_path['y']
+        z = self.arc_path['z']
+        yaw = self.arc_path['yaw']
+        speed = self.arc_path['speed']
+        curvature = self.arc_path['curvature']
+
+        sv = float(np.clip(sv, s_arr[0], s_arr[-1]))
+        idx = np.searchsorted(s_arr, sv) - 1
+        idx = max(0, min(idx, len(s_arr) - 2))
+        seg_len = s_arr[idx + 1] - s_arr[idx]
+        t = 0.0 if seg_len < 1e-12 else np.clip(
+            (sv - s_arr[idx]) / seg_len, 0.0, 1.0)
+        pyaw = _lerp_angle(yaw[idx], yaw[idx + 1], t)
+        pspeed = _lerp(speed[idx], speed[idx + 1], t)
+        return {
+            'x': _lerp(x[idx], x[idx + 1], t),
+            'y': _lerp(y[idx], y[idx + 1], t),
+            'z': _lerp(z[idx], z[idx + 1], t),
+            'yaw': pyaw,
+            'speed': pspeed,
+            'dx': pspeed * math.cos(pyaw),
+            'dy': pspeed * math.sin(pyaw),
+            'curvature': _lerp(curvature[idx], curvature[idx + 1], t),
+        }
+
     def _resample_window(self, s_start, s_end, n_points):
         """Resample n_points uniformly in [s_start, s_end] arc-length window."""
         s_arr = self.arc_path['s']
@@ -272,37 +320,18 @@ class ReferenceProcessor:
         curvature = self.arc_path['curvature']
 
         s_values = np.linspace(s_start, s_end, n_points)
-        points = []
+        return [self._sample_at_s(sv) for sv in s_values]
 
-        for sv in s_values:
-            # Find segment index
-            idx = np.searchsorted(s_arr, sv) - 1
-            idx = max(0, min(idx, len(s_arr) - 2))
-
-            seg_len = s_arr[idx + 1] - s_arr[idx]
-            if seg_len < 1e-12:
-                t = 0.0
-            else:
-                t = np.clip((sv - s_arr[idx]) / seg_len, 0.0, 1.0)
-
-            px = _lerp(x[idx], x[idx + 1], t)
-            py = _lerp(y[idx], y[idx + 1], t)
-            pz = _lerp(z[idx], z[idx + 1], t)
-            pyaw = _lerp_angle(yaw[idx], yaw[idx + 1], t)
-            pspeed = _lerp(speed[idx], speed[idx + 1], t)
-
-            # World-frame velocity from speed and heading
-            dx = pspeed * math.cos(pyaw)
-            dy = pspeed * math.sin(pyaw)
-
-            points.append({
-                'x': px, 'y': py, 'z': pz,
-                'yaw': pyaw, 'speed': pspeed,
-                'dx': dx, 'dy': dy,
-                'curvature': _lerp(curvature[idx], curvature[idx + 1], t),
-            })
-
-        return points
+    def _resample_time_window(self, s_start, n_points, dt):
+        """Sample the path at fixed time intervals for the MPC horizon."""
+        if self.arc_path is None or len(self.arc_path['s']) < 2:
+            return []
+        s_arr = self.arc_path['s']
+        t_arr = self.arc_path['time']
+        t_start = float(np.interp(s_start, s_arr, t_arr))
+        t_values = t_start + np.arange(n_points, dtype=float) * float(dt)
+        s_values = np.interp(t_values, t_arr, s_arr)
+        return [self._sample_at_s(sv) for sv in s_values]
 
     # --- Publishers ---
 
@@ -327,7 +356,7 @@ class ReferenceProcessor:
 
         self.path_pub.publish(msg)
 
-    def _publish_trajectory(self, local, now):
+    def _publish_trajectory(self, local, now, sample_dt=None):
         """Publish reference trajectory for MPC (NED).
 
         The first point is the current tracking target with its velocity.
@@ -338,15 +367,14 @@ class ReferenceProcessor:
             return
         points = []
         for i, ref in enumerate(local):
-            if i == 0:
-                j = 1
-            else:
-                j = i
             prev = local[max(0, i - 1)]
             nxt = local[min(len(local) - 1, i + 1)]
-            ds = math.hypot(nxt['x'] - prev['x'], nxt['y'] - prev['y'])
-            avg_speed = max(0.08, 0.5 * (prev['speed'] + nxt['speed']))
-            dt = max(1e-3, ds / avg_speed)
+            if sample_dt is None:
+                ds = math.hypot(nxt['x'] - prev['x'], nxt['y'] - prev['y'])
+                avg_speed = max(0.08, 0.5 * (prev['speed'] + nxt['speed']))
+                dt = max(1e-3, ds / avg_speed)
+            else:
+                dt = max(1e-3, float(sample_dt))
             ddx = (nxt['dx'] - prev['dx']) / dt
             ddy = (nxt['dy'] - prev['dy']) / dt
             dpsi = ref['speed'] * ref.get('curvature', 0.0)

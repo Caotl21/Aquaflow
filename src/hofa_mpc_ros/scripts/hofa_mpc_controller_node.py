@@ -350,11 +350,16 @@ class HofaMPCControllerNode:
         # MPCSolution.wrench field is not populated by the optimizer.
         self.safety.on_solver_result(True, wrench_enu)
 
-        # Convert FLU body force -> FRD body force for Stonefish
-        # FLU: x-forward, y-left, z-up
-        # FRD: x-forward, y-right, z-down
-        # Fx same, Fy negate, N same, Fz=0
-        wrench_ned = np.array([wrench_enu[0], -wrench_enu[1], wrench_enu[2]])
+        # Convert FLU body wrench -> FRD body wrench for Stonefish.
+        # FLU: x-forward, y-left, z-up, positive yaw/torque is CCW.
+        # FRD: x-forward, y-right, z-down, positive yaw/torque is CW.
+        # Therefore both the lateral force and z-axis torque change sign.
+        # Fx is unchanged; Fz is not used by this 3-DOF controller.
+        wrench_ned = np.array([
+            wrench_enu[0],
+            -wrench_enu[1],
+            -wrench_enu[2],
+        ])
 
         # Publish
         self._publish_wrench_ned(wrench_ned)

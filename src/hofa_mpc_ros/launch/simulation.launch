@@ -6,6 +6,8 @@
   <arg name="controller" default="hofa_mpc" doc="hofa_mpc or pid"/>
   <arg name="scene" default="random_pillars"/>
   <arg name="enable" default="true"/>
+  <arg name="headless" default="false"
+       doc="Run Stonefish in console/no-GPU mode"/>
 
   <!-- Load parameters at global level -->
   <rosparam command="load" file="$(find hofa_mpc_ros)/config/vehicle.yaml" />
@@ -15,6 +17,7 @@
   <include file="$(find aquaflow_stonefish)/launch/aquaflow_pool.launch">
     <arg name="vehicle_model" value="$(arg vehicle_model)"/>
     <arg name="scene" value="$(arg scene)"/>
+    <arg name="headless" value="$(arg headless)"/>
   </include>
 
   <!-- 1b. Start privileged teacher for path planning (RViz 2D Nav Goal → /aquaflow/teacher_reference) -->

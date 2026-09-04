@@ -154,9 +154,18 @@ class HofaMPC:
                 # turns the controller into a point regulator even when the
                 # local planner supplies a full trajectory window.
                 if i < Np - 1:
-                    ref_delta = np.concatenate([
-                        refs[i + 1].pose_array() - refs[i].pose_array(),
-                        refs[i + 1].velocity_array() - refs[i].velocity_array()])
+                    ref_i = np.concatenate([
+                        refs[i].pose_array(), refs[i].velocity_array()])
+                    ref_next = np.concatenate([
+                        refs[i + 1].pose_array(),
+                        refs[i + 1].velocity_array()])
+                    # z = current - reference.  For a time-indexed reference,
+                    # the affine term is Ad*ref_i - ref_next, not the forward
+                    # reference increment.
+                    ref_delta = self.Ad @ ref_i - ref_next
+                    ref_delta[2] = wrap_to_pi(
+                        self.dt * refs[i].dpsi + refs[i].psi
+                        - refs[i + 1].psi)
                 else:
                     ref_delta = np.zeros(6)
                 z = self.Ad @ z + self.Bd @ w_seq[i]
@@ -211,9 +220,16 @@ class HofaMPC:
         for i in range(Np):
             z_pred = self.Ad @ z_pred + self.Bd @ w_opt[i]
             if i < Np - 1:
-                z_pred += np.concatenate([
-                    refs[i + 1].pose_array() - refs[i].pose_array(),
-                    refs[i + 1].velocity_array() - refs[i].velocity_array()])
+                ref_i = np.concatenate([
+                    refs[i].pose_array(), refs[i].velocity_array()])
+                ref_next = np.concatenate([
+                    refs[i + 1].pose_array(),
+                    refs[i + 1].velocity_array()])
+                ref_delta = self.Ad @ ref_i - ref_next
+                ref_delta[2] = wrap_to_pi(
+                    self.dt * refs[i].dpsi + refs[i].psi
+                    - refs[i + 1].psi)
+                z_pred += ref_delta
             predicted_path[i] = z_pred[:3] + refs[min(i + 1, Np - 1)].pose_array()
 
         return MPCSolution(

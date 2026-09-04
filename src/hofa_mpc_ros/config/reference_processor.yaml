@@ -2,6 +2,10 @@
 reference_topic: /aquaflow/teacher_global_path
 lookahead_distance_m: 0.5
 n_resample_points: 20
+# The spatial window above is kept for PID.  MPC receives a separate
+# time-indexed window below: point i corresponds to t + i * mpc_dt_s.
+mpc_horizon_points: 20
+mpc_dt_s: 0.1
 max_speed: 0.35
 max_yaw_rate: 0.5
 max_accel_mps2: 0.12
