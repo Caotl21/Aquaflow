@@ -74,6 +74,33 @@ class TestErrorState:
 
 
 class TestMPCSolver:
+    def test_analytic_gradient_matches_central_difference(self, mpc):
+        """The new adjoint gradient must match the objective numerically."""
+        rng = np.random.RandomState(7)
+        state = VehicleState(x=0.2, y=-0.1, psi=0.4,
+                             u=0.12, v=-0.03, r=0.02)
+        refs = [ReferencePoint(x=0.03 * i, y=0.01 * i,
+                               psi=0.2 + 0.01 * i,
+                               dx=0.3, dy=0.1, dpsi=0.1)
+                for i in range(mpc.Np)]
+        z0 = mpc.compute_error_state(state, refs)
+        affine = mpc._reference_affine_terms(refs)
+        w = rng.randn(mpc.Np * 3) * 0.2
+        value, analytic = mpc._cost_and_grad(w, z0, affine)
+
+        eps = 1e-6
+        numeric = np.zeros_like(w)
+        for j in range(w.size):
+            wp, wm = w.copy(), w.copy()
+            wp[j] += eps
+            wm[j] -= eps
+            numeric[j] = (
+                mpc._cost_and_grad(wp, z0, affine)[0]
+                - mpc._cost_and_grad(wm, z0, affine)[0]
+            ) / (2.0 * eps)
+        assert np.isfinite(value)
+        np.testing.assert_allclose(analytic, numeric, rtol=2e-4, atol=2e-5)
+
     def test_zero_error_output_near_zero(self, mpc):
         state = VehicleState(x=0, y=0, psi=0, u=0, v=0, r=0)
         refs = [ReferencePoint() for _ in range(mpc.Np)]

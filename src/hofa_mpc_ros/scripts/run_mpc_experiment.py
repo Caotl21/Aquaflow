@@ -36,7 +36,7 @@ except ImportError:
 
 import rospy
 import rosgraph
-from geometry_msgs.msg import PoseStamped, WrenchStamped
+from geometry_msgs.msg import AccelStamped, PoseStamped, WrenchStamped
 from nav_msgs.msg import Odometry, Path
 from std_msgs.msg import Float64MultiArray
 from hofa_mpc_ros.msg import ControllerStatus, TrajectoryPointWindow
@@ -81,6 +81,7 @@ class ExperimentRecorder(object):
         self.odom = []
         self.status = []
         self.wrench = []
+        self.virtual_accel = []
         self.pwm = []
         self.window = []
 
@@ -94,6 +95,8 @@ class ExperimentRecorder(object):
                          self._status_cb, queue_size=20)
         rospy.Subscriber("/controller/generalized_force", WrenchStamped,
                          self._wrench_cb, queue_size=20)
+        rospy.Subscriber("/hofa_mpc_controller/virtual_accel_cmd", AccelStamped,
+                         self._virtual_accel_cb, queue_size=20)
         rospy.Subscriber("/bricsbot/setpoint/pwm", Float64MultiArray,
                          self._pwm_cb, queue_size=20)
 
@@ -113,6 +116,7 @@ class ExperimentRecorder(object):
             self.odom = []
             self.status = []
             self.wrench = []
+            self.virtual_accel = []
             self.pwm = []
             self.window = []
 
@@ -223,6 +227,15 @@ class ExperimentRecorder(object):
                 "nz": float(msg.wrench.torque.z),
             })
 
+    def _virtual_accel_cb(self, msg):
+        with self.lock:
+            self.virtual_accel.append({
+                "stamp": self._stamp(msg),
+                "ddx": float(msg.accel.linear.x),
+                "ddy": float(msg.accel.linear.y),
+                "ddpsi": float(msg.accel.angular.z),
+            })
+
     def _pwm_cb(self, msg):
         with self.lock:
             self.pwm.append({
@@ -248,6 +261,9 @@ class ExperimentRecorder(object):
             dt = max(times[i] - times[i - 1], 1e-3)
             speed[i] = ds[i - 1] / dt
         speed[0] = speed[1] if len(speed) > 1 else 0.0
+        # The teacher's terminal point is stationary; do not infer a
+        # nonzero terminal target speed from the final segment derivative.
+        speed[-1] = 0.0
         return {"xy": xy, "yaw": yaw, "arc": arc,
                 "times": times, "speed": speed}
 
@@ -332,6 +348,9 @@ class ExperimentRecorder(object):
             "duration_s": float(duration),
             "samples": int(len(odom)),
             "path_length_m": float(model["arc"][-1]),
+            "planned_duration_s": float(model["times"][-1] - model["times"][0]),
+            "time_lag_at_finish_s": float(duration -
+                                            (model["times"][-1] - model["times"][0])),
             "final_position_m": [odom[-1]["x"], odom[-1]["y"]],
             "final_speed_mps": float(odom[-1]["speed_world"]),
             "cross_track_error_m": stats(cross),
@@ -361,11 +380,13 @@ class ExperimentRecorder(object):
             odom, status, wrench, pwm, window = (
                 list(self.odom), list(self.status), list(self.wrench),
                 list(self.pwm), list(self.window))
+            virtual_accel = list(self.virtual_accel)
             path = self.initial_path or self.global_path
         metrics = self.metrics()
         self._write_csv(os.path.join(output_dir, "odometry.csv"), odom)
         self._write_csv(os.path.join(output_dir, "controller_status.csv"), status)
         self._write_csv(os.path.join(output_dir, "generalized_force.csv"), wrench)
+        self._write_csv(os.path.join(output_dir, "virtual_accel.csv"), virtual_accel)
         pwm_rows = [{"stamp": x["stamp"],
                      **{"pwm_%d" % i: v for i, v in enumerate(x["pwm"])}}
                     for x in pwm]
@@ -414,6 +435,7 @@ class ExperimentRecorder(object):
             model = self.initial_path_model
             status = list(self.status)
             wrench = list(self.wrench)
+            virtual_accel = list(self.virtual_accel)
         if not odom or model is None:
             return
         t = np.asarray([x["t_rel"] for x in odom])
@@ -463,6 +485,18 @@ class ExperimentRecorder(object):
             ax.set_xlabel("time [s]"); ax.set_ylabel("wrench [N/Nm]"); ax.grid(True); ax.legend()
             fig.tight_layout(); fig.savefig(os.path.join(output_dir, "control_wrench.png"), dpi=150); plt.close(fig)
 
+        if virtual_accel:
+            at = np.asarray([a["stamp"] - odom[0]["stamp"] for a in virtual_accel])
+            fig, ax = plt.subplots(figsize=(9, 4))
+            ax.plot(at, [a["ddx"] for a in virtual_accel], label="ddx")
+            ax.plot(at, [a["ddy"] for a in virtual_accel], label="ddy")
+            ax.plot(at, [a["ddpsi"] for a in virtual_accel], label="ddpsi")
+            ax.set_xlabel("time [s]"); ax.set_ylabel("virtual acceleration")
+            ax.grid(True); ax.legend()
+            fig.tight_layout(); fig.savefig(
+                os.path.join(output_dir, "virtual_accel.png"), dpi=150)
+            plt.close(fig)
+
 
 def publish_goal(goal_xy, depth=1.0):
     pub = rospy.Publisher("/move_base_simple/goal", PoseStamped, queue_size=1, latch=True)
@@ -504,7 +538,7 @@ def main():
     parser.add_argument("--goal-x", type=float, default=4.0)
     parser.add_argument("--goal-y", type=float, default=0.0)
     parser.add_argument("--goal-depth", type=float, default=1.0)
-    parser.add_argument("--timeout", type=float, default=90.0)
+    parser.add_argument("--timeout", type=float, default=120.0)
     parser.add_argument("--startup-wait", type=float, default=5.0)
     parser.add_argument("--no-launch", action="store_true")
     parser.add_argument("--no-bag", action="store_true")
@@ -544,6 +578,7 @@ def main():
                           "/aquaflow/teacher_global_path",
                           "/controller/reference_trajectory_window",
                           "/hofa_mpc_controller/status",
+                          "/hofa_mpc_controller/virtual_accel_cmd",
                           "/controller/generalized_force",
                           "/bricsbot/setpoint/pwm"]
             try:

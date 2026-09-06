@@ -9,7 +9,7 @@ import time
 import numpy as np
 import rospy
 import tf.transformations as tft
-from std_msgs.msg import Header, Bool, Empty
+from std_msgs.msg import Header, Bool, Empty, Float64
 from geometry_msgs.msg import WrenchStamped, AccelStamped, PoseStamped, Quaternion
 from nav_msgs.msg import Odometry, Path
 from hofa_mpc_ros.msg import TrajectoryPoint, TrajectoryPointWindow, ControllerStatus
@@ -85,12 +85,19 @@ class HofaMPCControllerNode:
             "~virtual_accel_cmd", AccelStamped, queue_size=5)
         self.predicted_path_pub = rospy.Publisher(
             "~predicted_path", Path, queue_size=1)
+        # Scalar diagnostics shared with planar_pid_tracker.py so the same
+        # tracking_error_plot.launch draws comparable curves for either
+        # controller.  The topic names, units and sign conventions must match
+        # that node exactly: body-frame metres in NED/FRD (x forward,
+        # y starboard) and signed NED yaw radians.
         self.error_x_pub = rospy.Publisher(
-            "~tracking_error/x_m", rospy.msg.AnyMsg, queue_size=10)
+            "/aquaflow/tracking_error/x_body_m", Float64, queue_size=10)
         self.error_y_pub = rospy.Publisher(
-            "~tracking_error/y_m", rospy.msg.AnyMsg, queue_size=10)
+            "/aquaflow/tracking_error/y_body_m", Float64, queue_size=10)
         self.error_yaw_pub = rospy.Publisher(
-            "~tracking_error/yaw_rad", rospy.msg.AnyMsg, queue_size=10)
+            "/aquaflow/tracking_error/yaw_rad", Float64, queue_size=10)
+        self.error_norm_pub = rospy.Publisher(
+            "/aquaflow/tracking_error/xy_norm_m", Float64, queue_size=10)
 
         # --- Control timer ---
         rate = self.mpc_params.control_rate_hz
@@ -374,6 +381,9 @@ class HofaMPCControllerNode:
         self._publish_status(pos_err, yaw_err, total_ms,
                              t_start, t_layer1_ms, t_layer2_ms,
                              sol.success, sol.iterations, sol.objective)
+        # Only on the tracking path: the early returns above must not emit
+        # zeros, which would read as perfect tracking while disabled.
+        self._publish_tracking_error()
 
     def _publish_wrench_ned(self, wrench_ned):
         """Publish generalized force in NED/FRD body frame."""
@@ -415,6 +425,30 @@ class HofaMPCControllerNode:
             ps.pose.orientation = Quaternion(x=q[0], y=q[1], z=q[2], w=q[3])
             path.poses.append(ps)
         self.predicted_path_pub.publish(path)
+
+    def _publish_tracking_error(self):
+        """Publish body-frame tracking error in planar_pid_tracker's convention.
+
+        The MPC works internally in ENU/FLU, but planar_pid_tracker derives its
+        body error straight from NED odometry and therefore publishes NED/FRD.
+        Emitting the raw ENU quantities here would flip the sign of
+        ``y_body_m`` relative to the PID controller, so the two would disagree
+        on which way the vehicle is off-track when overlaid in rqt_plot.
+        Convert before publishing.
+        """
+        dx = self.ref.x - self.state.x
+        dy = self.ref.y - self.state.y
+        c, s = math.cos(self.state.psi), math.sin(self.state.psi)
+        ex_flu = c * dx + s * dy
+        ey_flu = -s * dx + c * dy
+        # Forward is common to both conventions; lateral and yaw are negated
+        # going from FLU/ENU to FRD/NED.  The yaw error stays signed here,
+        # unlike the magnitude carried by ControllerStatus.
+        self.error_x_pub.publish(Float64(data=ex_flu))
+        self.error_y_pub.publish(Float64(data=-ey_flu))
+        self.error_yaw_pub.publish(Float64(
+            data=-shortest_angle_error(self.ref.psi, self.state.psi)))
+        self.error_norm_pub.publish(Float64(data=math.hypot(ex_flu, ey_flu)))
 
     def _publish_status(self, pos_err, yaw_err, callback_ms, t_start,
                         layer1_ms=0, layer2_ms=0, success=True,

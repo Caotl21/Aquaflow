@@ -82,6 +82,65 @@ class HofaMPC:
 
         return np.array([ex, ey, epsi, edx, edy, edpsi])
 
+    def _reference_affine_terms(self, refs):
+        """Build the affine terms for the time-indexed error dynamics.
+
+        With ``z = state - reference`` and ``z[i+1] = Ad*z[i] + Bd*w[i] + d[i]``,
+        ``d[i]`` is ``Ad*reference[i] - reference[i+1]``.  The yaw component is
+        wrapped only after including the expected ``dt*dpsi`` increment.
+        """
+        affine = np.zeros((self.Np - 1, 6))
+        for i in range(self.Np - 1):
+            ref_i = np.concatenate([
+                refs[i].pose_array(), refs[i].velocity_array()])
+            ref_next = np.concatenate([
+                refs[i + 1].pose_array(), refs[i + 1].velocity_array()])
+            affine[i] = self.Ad @ ref_i - ref_next
+            affine[i, 2] = wrap_to_pi(
+                self.dt * refs[i].dpsi + refs[i].psi - refs[i + 1].psi)
+        return affine
+
+    def _cost_and_grad(self, w_flat, z0, ref_affine):
+        """Return the exact cost and gradient for one MPC decision vector.
+
+        The gradient uses one forward rollout and one reverse adjoint pass,
+        replacing the previous O(n_var) finite-difference cost evaluations.
+        The cost ordering intentionally matches the existing SciPy objective.
+        """
+        w_seq = np.asarray(w_flat, dtype=float).reshape(self.Np, 3)
+        z_seq = np.zeros((self.Np + 1, 6))
+        z_seq[0] = z0
+        for i in range(self.Np):
+            z_seq[i + 1] = self.Ad @ z_seq[i] + self.Bd @ w_seq[i]
+            if i < self.Np - 1:
+                z_seq[i + 1] += ref_affine[i]
+
+        total = 0.0
+        for i in range(self.Np):
+            Q_i = self.F if i == self.Np - 1 else self.Q
+            total += float(z_seq[i] @ Q_i @ z_seq[i])
+            total += float(w_seq[i] @ self.R @ w_seq[i])
+            dw = w_seq[i] if i == 0 else w_seq[i] - w_seq[i - 1]
+            total += float(dw @ self.S @ dw)
+
+        # Reverse-mode derivative through z[i+1] = Ad*z[i] + Bd*w[i] + d[i].
+        # The existing objective charges z[i], not z[Np], hence lambda[Np]=0.
+        lam = np.zeros((self.Np + 1, 6))
+        grad = np.zeros((self.Np, 3))
+        for i in range(self.Np - 1, -1, -1):
+            Q_i = self.F if i == self.Np - 1 else self.Q
+            grad[i] = 2.0 * self.R @ w_seq[i] + self.Bd.T @ lam[i + 1]
+            lam[i] = 2.0 * Q_i @ z_seq[i] + self.Ad.T @ lam[i + 1]
+
+        # Derivative of the input-increment regularizer.
+        for i in range(self.Np):
+            dw = w_seq[i] if i == 0 else w_seq[i] - w_seq[i - 1]
+            grad[i] += 2.0 * self.S @ dw
+            if i > 0:
+                grad[i - 1] -= 2.0 * self.S @ dw
+
+        return total, grad.reshape(-1)
+
     def solve(self, state: VehicleState, refs: list,
               bounds: VirtualInputBounds = None,
               f_min: np.ndarray = None,
@@ -106,9 +165,9 @@ class HofaMPC:
         # Initial error state
         z0 = self.compute_error_state(state, refs)
 
-        # Precompute reference accelerations
-        ref_accels = np.array([refs[i].acceleration_array()
-                               for i in range(Np)])
+        # Precompute the affine terms induced by the moving, time-indexed
+        # reference.  They are independent of the optimization variables.
+        ref_affine = self._reference_affine_terms(refs)
 
         # Warm start from previous solution
         w0 = self._prev_w.flatten()
@@ -129,60 +188,10 @@ class HofaMPC:
 
         # Cost function
         def cost_fn(w_flat):
-            w_seq = w_flat.reshape(Np, 3)
-            z = z0.copy()
-            J_total = 0.0
+            return self._cost_and_grad(w_flat, z0, ref_affine)[0]
 
-            for i in range(Np):
-                # State cost
-                if i < Np - 1:
-                    J_total += float(z @ self.Q @ z)
-                else:
-                    J_total += float(z @ self.F @ z)
-
-                # Input cost
-                J_total += float(w_seq[i] @ self.R @ w_seq[i])
-
-                # Input increment cost
-                if i == 0:
-                    dw = w_seq[i]
-                else:
-                    dw = w_seq[i] - w_seq[i - 1]
-                J_total += float(dw @ self.S @ dw)
-
-                # Error dynamics for a moving reference.  Omitting this term
-                # turns the controller into a point regulator even when the
-                # local planner supplies a full trajectory window.
-                if i < Np - 1:
-                    ref_i = np.concatenate([
-                        refs[i].pose_array(), refs[i].velocity_array()])
-                    ref_next = np.concatenate([
-                        refs[i + 1].pose_array(),
-                        refs[i + 1].velocity_array()])
-                    # z = current - reference.  For a time-indexed reference,
-                    # the affine term is Ad*ref_i - ref_next, not the forward
-                    # reference increment.
-                    ref_delta = self.Ad @ ref_i - ref_next
-                    ref_delta[2] = wrap_to_pi(
-                        self.dt * refs[i].dpsi + refs[i].psi
-                        - refs[i + 1].psi)
-                else:
-                    ref_delta = np.zeros(6)
-                z = self.Ad @ z + self.Bd @ w_seq[i]
-                z += ref_delta
-
-            return J_total
-
-        # Gradient via finite differences (reliable for scipy)
         def cost_grad(w_flat):
-            grad = np.zeros_like(w_flat)
-            eps = 1e-6
-            f0 = cost_fn(w_flat)
-            for j in range(n_var):
-                w_pert = w_flat.copy()
-                w_pert[j] += eps
-                grad[j] = (cost_fn(w_pert) - f0) / eps
-            return grad
+            return self._cost_and_grad(w_flat, z0, ref_affine)[1]
 
         # Solve
         try:
@@ -220,16 +229,7 @@ class HofaMPC:
         for i in range(Np):
             z_pred = self.Ad @ z_pred + self.Bd @ w_opt[i]
             if i < Np - 1:
-                ref_i = np.concatenate([
-                    refs[i].pose_array(), refs[i].velocity_array()])
-                ref_next = np.concatenate([
-                    refs[i + 1].pose_array(),
-                    refs[i + 1].velocity_array()])
-                ref_delta = self.Ad @ ref_i - ref_next
-                ref_delta[2] = wrap_to_pi(
-                    self.dt * refs[i].dpsi + refs[i].psi
-                    - refs[i + 1].psi)
-                z_pred += ref_delta
+                z_pred += ref_affine[i]
             predicted_path[i] = z_pred[:3] + refs[min(i + 1, Np - 1)].pose_array()
 
         return MPCSolution(

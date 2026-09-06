@@ -1,11 +1,11 @@
 # HOFA-MPC controller parameters (loaded into controller node private namespace)
 mpc:
   control_rate_hz: 10.0
-  horizon: 14
+  horizon: 10
 
   weights:
     pose: [55.0, 55.0, 32.0]
-    pose_rate: [7.0, 7.0, 5.5]
+    pose_rate: [50.0, 50.0, 5.5]
     virtual_input: [0.20, 0.20, 0.14]
     input_increment: [1.20, 1.20, 0.75]
     terminal_multiplier: 4.0
@@ -16,7 +16,7 @@ mpc:
 
   solver:
     type: scipy_lbfgsb
-    max_iterations: 90
+    max_iterations: 25
     ftol: 1.0e-10
     gtol: 1.0e-7
     deadline_ms: 80.0
