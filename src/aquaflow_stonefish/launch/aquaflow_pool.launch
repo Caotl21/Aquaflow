@@ -18,11 +18,13 @@
   <arg name="graphics_resolution" default="1200 800"/>
   <arg name="graphics_quality" default="medium"
        doc="Stonefish graphics quality: low, medium or high"/>
+  <arg name="headless" default="false"
+       doc="Use Stonefish parsed_simulator_nogpu without an OpenGL window"/>
 
   <arg name="scenario_file"
        value="$(eval {'empty_pool': 'aquaflow_empty_pool.scn', 'single_obstacle': 'aquaflow_single_obstacle.scn', 'random_pillars': {'bluerov2': 'aquaflow_random_pillars_bluerov2.scn', 'bricsbot': 'aquaflow_random_pillars.scn'}[arg('vehicle_model')]}[arg('scene')])"/>
 
-  <include file="$(find stonefish_ros)/launch/simulator.launch">
+  <include unless="$(arg headless)" file="$(find stonefish_ros)/launch/simulator.launch">
     <arg name="simulation_data"
          value="$(find aquaflow_stonefish)/data"/>
     <arg name="scenario_description"
@@ -30,6 +32,14 @@
     <arg name="simulation_rate" value="$(arg simulation_rate)"/>
     <arg name="graphics_resolution" value="$(arg graphics_resolution)"/>
     <arg name="graphics_quality" value="$(arg graphics_quality)"/>
+  </include>
+
+  <include if="$(arg headless)" file="$(find stonefish_ros)/launch/simulator_nogpu.launch">
+    <arg name="simulation_data"
+         value="$(find aquaflow_stonefish)/data"/>
+    <arg name="scenario_description"
+         value="$(find aquaflow_stonefish)/scenarios/$(arg scenario_file)"/>
+    <arg name="simulation_rate" value="$(arg simulation_rate)"/>
   </include>
 
   <!-- Stonefish only broadcasts world_ned -> <robot>/base_link, so the camera

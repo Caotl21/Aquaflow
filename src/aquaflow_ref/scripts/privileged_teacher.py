@@ -182,10 +182,9 @@ class PrivilegedTeacherNode:
         self.global_plan = time_parameterize(smooth, goal[2], self.max_speed,
                                              self.max_yaw_rate, self.output_spacing,
                                              self.max_accel, self.max_decel)
-        if self.global_plan and self.goal_yaw is not None:
-            last = self.global_plan[-1]
-            self.global_plan[-1] = (last[0], last[1], last[2], self.goal_yaw,
-                                    0.0, last[5])
+        # Keep the terminal heading tangent-continuous with the planned route.
+        # A hard replacement by goal_yaw creates an artificial heading jump at
+        # the final sample and contaminates MPC behavior and metrics.
         self.sampler.reset()
         return bool(self.global_plan)
 

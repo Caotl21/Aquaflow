@@ -171,6 +171,8 @@ catkin_install_python(PROGRAMS
   scripts/actual_path_recorder.py
   scripts/blue8_thruster_allocator.py
   scripts/brics6_thruster_allocator.py
+  scripts/constant_force_publisher.py
+  scripts/export_baseline_artifacts.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 

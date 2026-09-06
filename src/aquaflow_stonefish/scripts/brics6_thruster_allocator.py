@@ -96,12 +96,14 @@ class Brics6Allocator:
         self.reverse_max_force = float(rospy.get_param("~reverse_max_force_n", 6.0 * 9.80665))
         self.last_wrench = None
         self.pinv = self._build_pseudoinverse()
-        # T2, T4 and T6 use both inverted_setpoint=true and right=false in the
-        # Stonefish model.  Those two signs cancel: a positive user PWM still
-        # produces positive thrust along the geometric direction below.  Do not
-        # apply a second software inversion here.  The previous code negated
-        # these three channels again and therefore reversed their physical
-        # force directions.
+        # Current bricsbot_reference.scn configuration uses
+        # inverted_setpoint="false" and right="true" for all six thrusters.
+        # Stonefish first applies inverted_setpoint to the normalized command;
+        # it then evaluates the thrust model and only negates the resulting
+        # force for a left-handed propeller (right="false").  Consequently
+        # the present model has no hidden per-channel sign inversion: the PWM
+        # sign is the thrust-model sign, and the rpy/origin defines its body
+        # direction.  Do not add a second software inversion here.
         inverted = rospy.get_param("~inverted_setpoints", [False, False, False, False, False, False])
         self.inverted = tuple(bool(v) for v in inverted)
         # Effective sign from user PWM to physical thrust.  Stonefish applies

@@ -136,6 +136,13 @@
       <ros_publisher topic="/$(arg vehicle_name)/camera_front"/>
     </sensor>
 
+    <sensor name="imu_filter" type="imu" rate="20.0">
+			<link name="base_link"/>
+			<origin rpy="0.0 0.0 0.0" xyz="0.0 0.0 0.0"/>
+			<noise angle="0.000001745" angular_velocity="0.00001745"/>
+			<ros_publisher topic="/$(arg vehicle_name)/imu"/>
+		</sensor>
+
     <world_transform xyz="$(arg position)" rpy="$(arg orientation)"/>
     <ros_subscriber thrusters="/$(arg vehicle_name)/setpoint/pwm"/>
   </robot>
