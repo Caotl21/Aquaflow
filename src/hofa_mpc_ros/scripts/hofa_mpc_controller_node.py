@@ -283,9 +283,11 @@ class HofaMPCControllerNode:
         if not self.enabled:
             self.controller_state = ControllerState.DISABLED
 
-        # Get override command from safety supervisor
+        # Get override command from safety supervisor.  pre_solve keeps a
+        # degraded cycle from short-circuiting the solve below, which is the
+        # only thing that can clear the failure counter.
         override, effective_state = self.safety.get_override_command(
-            self.controller_state)
+            self.controller_state, pre_solve=True)
 
         if override is not None:
             self._publish_wrench_ned(override)
@@ -331,11 +333,28 @@ class HofaMPCControllerNode:
 
         if not sol.success:
             self.safety.on_solver_result(False, np.zeros(3))
+            # pre_solve is deliberately left False here: the solve already
+            # happened and failed, so this call is asking for the fallback
+            # command.  It is never None on this path, since the failure just
+            # recorded above guarantees consecutive_failures >= 1.
             override, effective_state = self.safety.get_override_command(
                 self.controller_state)
             if override is not None:
                 self._publish_wrench_ned(override)
                 self.controller_state = effective_state
+                # Report it.  A silent solver failure is indistinguishable
+                # from healthy operation on every topic the operator watches.
+                rospy.logwarn_throttle(
+                    1.0,
+                    "MPC solve failed: scipy status=%d (%s), objective=%.3e, "
+                    "iterations=%d -> state=%s, consecutive_failures=%d",
+                    sol.status, sol.message, sol.objective, sol.iterations,
+                    effective_state.value, self.safety.consecutive_failures)
+                self._publish_status(
+                    0, 0, (time.time() - t_start) * 1000, t_start,
+                    layer1_ms=t_layer1_ms, layer2_ms=t_layer2_ms,
+                    success=False, iterations=sol.iterations,
+                    objective=sol.objective)
                 return
 
         # HOFA inverse: virtual acceleration -> body force (ENU/FLU)

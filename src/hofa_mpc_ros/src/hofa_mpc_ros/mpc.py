@@ -204,16 +204,27 @@ class HofaMPC:
                     'gtol': self.params.gtol,
                 }
             )
-            # Treat as success if scipy converged or objective is negligible
-            success = result.success or result.fun < 1e-20
+            # status 0 = converged, 1 = maxiter reached.  A receding-horizon
+            # controller can use the maxiter iterate — it is a feasible,
+            # suboptimal control, and the next cycle warm-starts from it.
+            # Only status 2 (abnormal termination, e.g. a line-search failure)
+            # means the result is unusable.  Rejecting status 1 made every
+            # iteration-limited solve look like a fault.
+            success = (result.status in (0, 1)
+                       and np.isfinite(result.fun)
+                       and np.all(np.isfinite(result.x)))
             w_opt = result.x.reshape(Np, 3)
             objective = float(result.fun)
             iterations = result.nit
-        except Exception:
+            status = int(result.status)
+            message = str(result.message)
+        except Exception as error:
             success = False
             w_opt = self._prev_w.copy()
             objective = float('inf')
             iterations = 0
+            status = -1
+            message = "%s: %s" % (type(error).__name__, error)
 
         # Update warm start
         if success:
@@ -238,6 +249,8 @@ class HofaMPC:
             predicted_path=predicted_path,
             objective=objective,
             iterations=iterations,
+            status=status,
+            message=message,
             bounds=bounds or VirtualInputBounds(),
         )
 

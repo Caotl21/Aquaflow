@@ -16,7 +16,7 @@ mpc:
 
   solver:
     type: scipy_lbfgsb
-    max_iterations: 25
+    max_iterations: 90
     ftol: 1.0e-10
     gtol: 1.0e-7
     deadline_ms: 80.0

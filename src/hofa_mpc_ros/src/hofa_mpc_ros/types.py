@@ -96,6 +96,12 @@ class MPCSolution:
     iterations: int = 0
     layer1_time_ms: float = 0.0
     layer2_time_ms: float = 0.0
+    # scipy termination status (0 converged, 1 maxiter, 2 abnormal) and its
+    # message, kept so a failed solve can be diagnosed from the logs instead
+    # of only being visible as a controller state change.  -1 marks an
+    # exception raised out of the solver itself.
+    status: int = 0
+    message: str = ""
     bounds: VirtualInputBounds = field(default_factory=VirtualInputBounds)
 
 

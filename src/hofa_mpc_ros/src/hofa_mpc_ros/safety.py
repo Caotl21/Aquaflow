@@ -102,12 +102,18 @@ class SafetySupervisor:
             self.consecutive_failures += 1
 
     def get_override_command(self, current_state: ControllerState,
-                             ) -> tuple:
+                             pre_solve: bool = False) -> tuple:
         """Determine the command to send based on safety state.
 
+        Args:
+            current_state: state reported by :meth:`check_state`
+            pre_solve: True when called before attempting a solve.  The
+                degraded branch then yields to the solver instead of
+                pre-empting it — see below.
+
         Returns:
-            (command, state) where command is the wrench to send
-            and state is the effective controller state.
+            (command, state) where command is the wrench to send, or None to
+            let the caller proceed with its own control computation.
         """
         if current_state == ControllerState.FAULT:
             return np.zeros(3), ControllerState.FAULT
@@ -125,10 +131,18 @@ class SafetySupervisor:
         if self.consecutive_failures >= self.params.max_consecutive_solver_failures:
             return np.zeros(3), ControllerState.FAULT
 
-        # Degraded mode: hold last valid command
+        # Degraded mode: hold last valid command.
         if self.consecutive_failures > 0:
             self.hold_cycles_remaining = self.params.max_consecutive_solver_failures \
                 - self.consecutive_failures
+            if pre_solve:
+                # Yield to the solver.  Only a completed solve calls
+                # on_solver_result, so pre-empting it here would leave
+                # consecutive_failures pinned above zero forever: degraded
+                # would become an absorbing state that neither recovers nor
+                # escalates to FAULT.  A solve that fails again lands in the
+                # branch below via the caller's failure path.
+                return None, ControllerState.DEGRADED
             return self.last_valid_cmd, ControllerState.DEGRADED
 
         return None, ControllerState.ACTIVE
