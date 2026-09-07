@@ -47,6 +47,25 @@ DEFAULT_TOPIC_EXCLUDE = (
     re.compile(r"/parameter_(descriptions|updates)$"),
 )
 
+# Topics that are advertised but legitimately never publish, with the reason.
+# These are recorded like any other topic and are not treated as a gap, since
+# reporting them as missing data would train the reader to ignore the one
+# signal that is supposed to mean something.
+EXPECTED_SILENT = (
+    (re.compile(r"/compressedDepth$"),
+     "compressed_depth_image_transport advertises a compressedDepth topic for "
+     "every image topic but only publishes for depth encodings (16UC1/32FC1); "
+     "this camera is rgb8, so the topic stays silent by design"),
+)
+
+
+def expected_silence_reason(name):
+    """Return why a topic is expected to stay silent, or None if it is not."""
+    for pattern, reason in EXPECTED_SILENT:
+        if pattern.search(name):
+            return reason
+    return None
+
 
 def utc_now():
     return datetime.datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
@@ -54,11 +73,27 @@ def utc_now():
 
 def run_command(command):
     """Return stripped stdout of ``command`` or None when it is unavailable."""
+    return run_command_checked(command)[0]
+
+
+def run_command_checked(command):
+    """Run ``command`` and return ``(stdout, error)``.
+
+    Unlike :func:`run_command` this keeps the failure reason, so a caller that
+    is recording provenance can say *why* it came up empty instead of emitting
+    a plausible-looking negative result.
+    """
     try:
-        output = subprocess.check_output(command, stderr=subprocess.DEVNULL)
-    except (OSError, subprocess.CalledProcessError):
-        return None
-    return output.decode("utf-8", "replace").strip() or None
+        process = subprocess.Popen(command, stdout=subprocess.PIPE,
+                                   stderr=subprocess.PIPE)
+        raw_out, raw_err = process.communicate()
+    except OSError as error:
+        return None, str(error)
+    out = raw_out.decode("utf-8", "replace").strip()
+    err = raw_err.decode("utf-8", "replace").strip()
+    if process.returncode != 0:
+        return None, err or ("exit status %d" % process.returncode)
+    return (out or None), None
 
 
 def sha256_of(path):
@@ -74,13 +109,28 @@ def sha256_of(path):
 # ---------------------------------------------------------------------------
 
 def git_state(path):
-    """Record commit and dirtiness so a capture can be tied back to source."""
-    commit = run_command(["git", "-C", path, "rev-parse", "HEAD"])
+    """Record commit and dirtiness so a capture can be tied back to source.
+
+    ``safe.directory=*`` is passed per invocation because this workspace mixes
+    root-owned and user-owned package directories: git's dubious-ownership
+    check rejects whichever set the caller does not own, so running as either
+    user would otherwise silently drop half the provenance.  The override
+    applies to this one process and writes no config file.
+    """
+    git = ["git", "-c", "safe.directory=*", "-C", path]
+    commit, error = run_command_checked(git + ["rev-parse", "HEAD"])
     if commit is None:
-        return {"path": path, "tracked": False}
-    status = run_command(["git", "-C", path, "status", "--porcelain", "--", path])
-    return {"path": path, "tracked": True, "commit": commit,
-            "dirty": bool(status), "dirty_files": status.splitlines() if status else []}
+        # Report the reason: an empty provenance record that looks deliberate
+        # is worse than no record at all.
+        return {"path": path, "tracked": False, "error": error}
+    status, status_error = run_command_checked(
+        git + ["status", "--porcelain", "--", path])
+    record = {"path": path, "tracked": True, "commit": commit,
+              "dirty": bool(status),
+              "dirty_files": status.splitlines() if status else []}
+    if status_error:
+        record["error"] = status_error
+    return record
 
 
 def stonefish_info(search_roots):
@@ -241,8 +291,21 @@ def collect_env_report(args, package_paths, scenario_tree, topics):
 # ---------------------------------------------------------------------------
 
 def get_message_class(type_string):
+    """Resolve a message class, or None when the type cannot be introspected.
+
+    The master reports ``*`` for a topic registered with a wildcard type (an
+    ``AnyMsg`` subscriber such as ``rosbag record -a`` or ``rostopic echo``),
+    and genpy raises for any name without a package.  A single such topic must
+    not abort the whole capture, so failures degrade to None and the caller
+    records the topic as unresolved.
+    """
+    if not type_string or "/" not in type_string:
+        return None
     import roslib.message
-    return roslib.message.get_message_class(type_string)
+    try:
+        return roslib.message.get_message_class(type_string)
+    except Exception:
+        return None
 
 
 def expand_fields(type_string, prefix="", depth=0, max_depth=8):
@@ -298,9 +361,16 @@ class TopicProbe(object):
         self.tf_pairs = set()
         self.first_message = None
         message_class = get_message_class(type_string)
+        self.unresolved = message_class is None
+        # A 640x480 RGB frame is ~0.9 MB; a deep queue on an image topic would
+        # buffer hundreds of megabytes for a callback that only appends floats.
+        queue_size = 5 if "Image" in type_string else 200
         self.subscriber = (rospy.Subscriber(name, message_class, self.callback,
-                                            queue_size=200)
+                                            queue_size=queue_size)
                            if message_class is not None else None)
+        if self.unresolved:
+            rospy.logwarn("cannot resolve message type %r of %s; recorded as "
+                          "unresolved and not sampled", type_string, name)
 
     def callback(self, message):
         self.wall_times.append(rospy.get_time())
@@ -323,6 +393,11 @@ class TopicProbe(object):
         record = {"type": self.type_string, "count": count,
                   "window_s": round(window_s, 3),
                   "declared_rate_hz": declared_rate_hz}
+        if self.unresolved:
+            record["unresolved_type"] = True
+            record["measured_rate_hz"] = None
+            record["note"] = "message type could not be resolved; not sampled"
+            return record
         if count < 2:
             record["measured_rate_hz"] = None
             record["note"] = "fewer than two messages during the capture window"
@@ -354,8 +429,15 @@ class TopicProbe(object):
 
     def schema_record(self, declared):
         record = {"type": self.type_string,
-                  "declared_by_scenario": declared,
-                  "fields": expand_fields(self.type_string)}
+                  "declared_by_scenario": declared}
+        if self.unresolved:
+            record["unresolved_type"] = True
+            record["fields"] = None
+            record["sample"] = None
+            record["note"] = ("master reports a wildcard or unknown message "
+                              "type; schema could not be introspected")
+            return record
+        record["fields"] = expand_fields(self.type_string)
         message_class = get_message_class(self.type_string)
         if message_class is not None:
             record["md5sum"] = message_class._md5sum
@@ -390,7 +472,9 @@ def declared_topic_map(scenario_tree):
     return declared
 
 
-def topic_is_excluded(name, include_all):
+def topic_is_excluded(name, include_all, extra_patterns=()):
+    if any(pattern.search(name) for pattern in extra_patterns):
+        return True
     if include_all:
         return False
     return any(pattern.search(name) for pattern in DEFAULT_TOPIC_EXCLUDE)
@@ -432,6 +516,11 @@ def main():
                         help="artifact directory (default: <workspace>/artifacts)")
     parser.add_argument("--include-all-topics", action="store_true",
                         help="also record /rosout and dynamic_reconfigure topics")
+    parser.add_argument("--exclude", action="append", default=[], metavar="REGEX",
+                        help="skip topics matching this regex; repeatable. Use "
+                             "for stray topics left by a tool rather than the "
+                             "simulation (the exclusions are stored in the "
+                             "artifacts so a capture stays auditable)")
     parser.add_argument("--tag", default=None,
                         help="free-form label stored in the capture metadata")
     args = parser.parse_args(rospy.myargv()[1:])
@@ -461,9 +550,11 @@ def main():
     scenario_tree = parse_scenario(scenario_path, package_paths, args.vehicle_name)
     declared = declared_topic_map(scenario_tree)
 
+    extra_patterns = [re.compile(pattern) for pattern in args.exclude]
     published = [(name, type_string)
                  for name, type_string in rospy.get_published_topics()
-                 if not topic_is_excluded(name, args.include_all_topics)]
+                 if not topic_is_excluded(name, args.include_all_topics,
+                                          extra_patterns)]
     if not published:
         rospy.logerr("no topics published; is the simulation running?")
         return 1
@@ -479,33 +570,71 @@ def main():
     present = {probe.name for probe in probes}
     # A scenario-declared sensor with no traffic is the single most misleading
     # gap in a partial capture, so name it explicitly in every artifact.
-    missing = sorted(topic for topic, info in declared.items() if topic not in present)
+    satisfied, missing = resolve_declared_topics(declared, present)
+    unresolved = sorted(probe.name for probe in probes if probe.unresolved)
+    quiet = sorted(probe.name for probe in probes
+                   if not probe.unresolved and not probe.wall_times)
+    expected_silent = [{"topic": name, "reason": expected_silence_reason(name)}
+                       for name in quiet if expected_silence_reason(name)]
+    silent = [name for name in quiet if not expected_silence_reason(name)]
     capture = {
         "generated_at_utc": utc_now(),
         "scene": args.scene,
         "vehicle_name": args.vehicle_name,
         "window_s": round(window, 3),
         "tag": args.tag,
-        "complete": not missing,
+        "excluded_topic_patterns": list(args.exclude),
+        "complete": not missing and not silent and not unresolved,
+        "declared_sensor_topics": {
+            topic: {"sensor": declared[topic]["sensor"],
+                    "sensor_type": declared[topic]["sensor_type"],
+                    "enabled_in_scenario": declared[topic]["enabled"],
+                    "declared_rate_hz": declared[topic]["declared_rate_hz"],
+                    "live_topics": satisfied[topic]}
+            for topic in satisfied},
         "missing_expected_topics": [
             {"topic": topic, "enabled_in_scenario": declared[topic]["enabled"],
              "sensor": declared[topic]["sensor"], "sensor_type": declared[topic]["sensor_type"]}
             for topic in missing],
+        "advertised_but_silent_topics": silent,
+        "expected_silent_topics": expected_silent,
+        "unresolved_type_topics": unresolved,
     }
     if missing:
         rospy.logwarn("PARTIAL capture: %d scenario sensor topic(s) never published: %s",
                       len(missing), ", ".join(missing))
+    if silent:
+        rospy.logwarn("PARTIAL capture: %d topic(s) advertised but silent: %s",
+                      len(silent), ", ".join(silent))
+    if unresolved:
+        rospy.logwarn("PARTIAL capture: %d topic(s) with unresolvable type: %s "
+                      "(re-run with --exclude to drop them if they are stray)",
+                      len(unresolved), ", ".join(unresolved))
+    for item in expected_silent:
+        rospy.loginfo("silent by design, not a gap: %s", item["topic"])
 
     env_report = collect_env_report(args, package_paths, scenario_tree, present)
     env_report["capture"] = capture
 
-    schema = {"capture": capture,
-              "topics": {probe.name: probe.schema_record(declared.get(probe.name))
-                         for probe in probes}}
-    rates = {"capture": capture,
-             "topics": {probe.name: probe.rate_record(
-                 window, (declared.get(probe.name) or {}).get("declared_rate_hz"))
-                 for probe in probes}}
+    # Attribute every live topic back to the sensor that declared it, so a
+    # camera sub-topic carries its sensor name and declared rate too.
+    origin = {}
+    for topic, live_topics in satisfied.items():
+        for name in live_topics:
+            origin[name] = dict(declared[topic], declared_topic=topic)
+
+    schema = {"capture": capture, "topics": {}}
+    rates = {"capture": capture, "topics": {}}
+    for probe in probes:
+        declared_rate = (origin.get(probe.name) or {}).get("declared_rate_hz")
+        schema_entry = probe.schema_record(origin.get(probe.name))
+        rate_entry = probe.rate_record(window, declared_rate)
+        reason = expected_silence_reason(probe.name) if not probe.wall_times else None
+        if reason:
+            schema_entry["expected_silent"] = reason
+            rate_entry["expected_silent"] = reason
+        schema["topics"][probe.name] = schema_entry
+        rates["topics"][probe.name] = rate_entry
 
     for filename, payload in (("stonefish_env_report.json", env_report),
                               ("ros_topic_schema.json", schema),
