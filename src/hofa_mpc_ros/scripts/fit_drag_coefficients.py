@@ -125,8 +125,8 @@ def select_window(data, steady_window, steady_start, steady_end):
 
 def fit_drag(trials, nonnegative=True):
     """Fit coefficients from one representative point per trial."""
-    u = np.asarray([trial["u_mean"] for trial in trials], dtype=float)
-    force = np.asarray([trial["drag_force_mean"] for trial in trials], dtype=float)
+    u = np.asarray([trial["u_mean_mps"] for trial in trials], dtype=float)
+    force = np.asarray([trial["drag_force_mean_N"] for trial in trials], dtype=float)
     if len(trials) < 2 or np.ptp(u) < 1e-5:
         raise ValueError(
             "At least two distinct steady speeds are required to fit d_l and d_q")
