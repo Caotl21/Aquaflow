@@ -6,8 +6,8 @@ vehicle:
                 0.0, 0.0, 0.15]
   coriolis_enabled: false
   # Linear and quadratic drag coefficients [x, y, yaw]
-  drag_linear: [8.0, 10.0, 1.4]
-  drag_quadratic: [12.0, 15.0, 0.35]
+  drag_linear: [54.0, 10.0, 1.4]
+  drag_quadratic: [2.0, 15.0, 0.35]
 
 # Horizontal thrusters T1-T4 (matching hand-drawn diagram and actual hardware)
 thrusters:

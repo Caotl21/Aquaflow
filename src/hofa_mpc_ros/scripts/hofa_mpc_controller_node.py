@@ -318,12 +318,19 @@ class HofaMPCControllerNode:
             refs.extend([refs[-1]] * (self.mpc_params.horizon - len(refs)))
         refs = refs[:self.mpc_params.horizon]
 
-        # Compute virtual input bounds (Layer 1)
+        # Layer 1: predict this horizon from the shifted previous solution,
+        # then compute and freeze one verified input box per prediction step.
         t_layer1_start = time.time()
-        bounds = self.constraint_strategy.compute(
-            self.state, self.model, self.allocator,
-            scale=self.mpc_params.safe_box_scale,
-        )
+        predicted_states = self.mpc.predict_nominal_states(self.state, refs)
+        bounds = [
+            self.constraint_strategy.compute_for_step(
+                predicted_state,
+                self.model,
+                self.allocator,
+                scale=self.mpc_params.safe_box_scale,
+            )
+            for predicted_state in predicted_states
+        ]
         t_layer1_ms = (time.time() - t_layer1_start) * 1000
 
         # Solve MPC (Layer 2)

@@ -5,12 +5,23 @@ n_resample_points: 20
 # The spatial window above is kept for PID.  MPC receives a separate
 # time-indexed window below: point i corresponds to t + i * mpc_dt_s.
 mpc_horizon_points: 20
-mpc_dt_s: 0.1
-max_speed: 0.35
+mpc_dt_s: 0.05
+max_speed: 0.20
 max_yaw_rate: 0.5
+max_yaw_accel_radps2: 0.25
+# Fraction of max_yaw_accel_radps2 the yaw-accel speed limit always keeps.
+# At 0.0 a tight corner drives the budget negative and pins the profile speed
+# at exactly zero, i.e. the reference orders a dead stop mid-route.
+yaw_accel_reserve_ratio: 0.2
+yaw_smoothing_window: 5
 max_accel_mps2: 0.12
 max_decel_mps2: 0.18
 s_backtrack_tolerance_m: 0.5
+# Reference anchoring: "schedule" advances an absolute plan clock so the
+# controllers can see along-track error; "projection" re-derives the reference
+# from the vehicle every cycle (legacy), which makes that error identically 0.
+progress_mode: schedule
+max_schedule_lead_m: 1.0
 rate: 20.0
 odom_timeout_s: 0.25
 path_timeout_s: 2.0

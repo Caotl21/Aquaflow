@@ -5,6 +5,8 @@
        doc="Nominal trajectory: line or figure_eight"/>
   <arg name="reference_topic" default="/aquaflow/nominal_path"
        doc="Tracking reference: nominal path or /aquaflow/teacher_reference"/>
+  <arg name="velocity_reference_topic" default="/controller/reference_velocity"
+       doc="Optional world-frame velocity reference for the PID inner loop."/>
   <arg name="enable" default="false"
        doc="Set true only after checking the scene and low-amplitude command path."/>
   <arg name="vehicle_name" default="bricsbot"/>
@@ -27,7 +29,9 @@
     <param name="ki_z" value="0.5"/>
     <param name="z_integral_limit" value="5.0"/>
     <param name="yaw_deadband_deg" value="0.0"/>
+    <param name="control_mode" value="dual_loop"/>
     <param name="reference_topic" value="$(arg reference_topic)"/>
+    <param name="velocity_reference_topic" value="$(arg velocity_reference_topic)"/>
   </node>
   <node pkg="aquaflow_stonefish" type="actual_path_recorder.py"
         name="actual_path_recorder" output="screen">

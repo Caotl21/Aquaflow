@@ -4,7 +4,9 @@ import os
 import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
+from itertools import product
 import numpy as np
+from scipy.optimize import linprog
 from hofa_mpc_ros.constraints import SafeInnerBoxStrategy, CurrentStateBoxStrategy
 from hofa_mpc_ros.types import VehicleParams, VehicleState, ThrusterConfig
 from hofa_mpc_ros.model import ThreeDOFModel
@@ -92,10 +94,36 @@ class TestSafeInnerBoxStrategy:
 
         width_full = bounds_full.upper - bounds_full.lower
         width_half = bounds_half.upper - bounds_half.lower
-        np.testing.assert_allclose(width_half, width_full * 0.5, atol=1e-6)
+        assert np.all(width_half <= width_full + 1e-6)
+        assert np.all(width_half > 0.0)
 
     def test_compute_for_step(self, model, allocator):
         strategy = SafeInnerBoxStrategy()
         state_pred = np.array([0, 0, 0, 0, 0, 0])
         bounds = strategy.compute_for_step(state_pred, model, allocator)
         assert np.all(bounds.lower < bounds.upper)
+
+    def test_inner_box_corners_are_actuator_feasible(self, model, allocator):
+        strategy = SafeInnerBoxStrategy()
+        state_pred = np.array([0.0, 0.0, 0.3, 0.4, -0.2, 0.1])
+        bounds = strategy.compute_for_step(state_pred, model, allocator)
+        nu = state_pred[3:]
+        psi = state_pred[2]
+        from hofa_mpc_ros.hofa import kinematic_matrix, kinematic_matrix_dot
+        J = kinematic_matrix(psi)
+        Jdot = kinematic_matrix_dot(psi, nu[2])
+        drift = Jdot @ nu + J @ model.M_inv @ (
+            -model.coriolis(nu) @ nu - model.drag(nu) @ nu)
+        gain = J @ model.M_inv @ allocator.Bh
+        f_min = np.array([t.thrust_min for t in allocator.thrusters])
+        f_max = np.array([t.thrust_max for t in allocator.thrusters])
+        for corner in product(*[[bounds.lower[i], bounds.upper[i]]
+                                for i in range(3)]):
+            result = linprog(
+                np.zeros(allocator.n_thrusters),
+                A_eq=gain,
+                b_eq=np.asarray(corner) - drift,
+                bounds=list(zip(f_min, f_max)),
+                method="highs",
+            )
+            assert result.success

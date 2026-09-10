@@ -2,21 +2,28 @@
 """Arc-length parameterized reference processor for HOFA-MPC.
 
 Subscribes to a planned Path from privileged_teacher, builds an internal
-arc-length parameterized representation, projects the robot position onto
-the curve with progress tracking, extracts a lookahead window, resamples
-uniformly, and publishes:
+arc-length parameterized representation, advances an absolute schedule along
+it, extracts a lookahead window, resamples uniformly, and publishes:
   - /controller/reference_path (Path)           → PID
   - /controller/reference_trajectory (TrajectoryPoint) → MPC
+
+The window anchor is the scheduled arc position s_desired(t), obtained by
+integrating the speed profile in real time.  Anchoring on the robot's own
+projection instead (``progress_mode: projection``) makes the reference
+re-derive itself from the vehicle every cycle, so no controller downstream
+can observe that it is ahead of or behind plan -- the along-track error is
+identically zero by construction.
 
 All coordinates are NED (world_ned frame).
 """
 import math
 import numpy as np
 import rospy
-from geometry_msgs.msg import PoseStamped, Quaternion, Point
+from geometry_msgs.msg import PoseStamped, Quaternion, Point, TwistStamped
 from nav_msgs.msg import Odometry, Path
-from std_msgs.msg import Header
+from std_msgs.msg import Header, Float64
 from hofa_mpc_ros.msg import TrajectoryPoint, TrajectoryPointWindow
+from hofa_mpc_ros.arc_profile import build_arc_profile
 
 
 def _wrap(angle):
@@ -47,10 +54,30 @@ class ReferenceProcessor:
         self.mpc_dt = max(1e-3, float(rospy.get_param("~mpc_dt_s", 0.1)))
         self.max_speed = float(rospy.get_param("~max_speed", 0.35))
         self.max_yaw_rate = float(rospy.get_param("~max_yaw_rate", 0.5))
+        self.max_yaw_accel = max(
+            1e-3, float(rospy.get_param("~max_yaw_accel_radps2", 0.25)))
+        self.yaw_accel_reserve_ratio = max(0.0, float(
+            rospy.get_param("~yaw_accel_reserve_ratio", 0.2)))
+        self.yaw_smoothing_window = max(
+            3, int(rospy.get_param("~yaw_smoothing_window", 5)))
+        if self.yaw_smoothing_window % 2 == 0:
+            self.yaw_smoothing_window += 1
         self.max_accel = max(1e-3, float(rospy.get_param("~max_accel_mps2", 0.12)))
         self.max_decel = max(1e-3, float(rospy.get_param("~max_decel_mps2", 0.18)))
         self.s_backtrack_tol = float(
             rospy.get_param("~s_backtrack_tolerance_m", 0.5))
+        self.progress_mode = str(
+            rospy.get_param("~progress_mode", "schedule")).lower()
+        if self.progress_mode not in ("schedule", "projection"):
+            rospy.logwarn("unknown progress_mode '%s', using 'schedule'",
+                          self.progress_mode)
+            self.progress_mode = "schedule"
+        # How far the schedule may run ahead of where the vehicle actually is.
+        # Without this a stalled or blocked vehicle lets the reference escape
+        # to the end of the route, which the controllers would chase as an
+        # unbounded error.
+        self.max_schedule_lead = max(0.0, float(
+            rospy.get_param("~max_schedule_lead_m", 1.0)))
         rate = float(rospy.get_param("~rate", 20.0))
         odom_timeout = float(rospy.get_param("~odom_timeout_s", 0.25))
         path_timeout = float(rospy.get_param("~path_timeout_s", 2.0))
@@ -63,6 +90,11 @@ class ReferenceProcessor:
         self.prev_speed = 0.0
         self.path_stamp = None
         self.path_signature = None
+        # Absolute schedule state.  ``schedule_t0`` is the ROS time at which
+        # the current route's profile starts; it is re-initialized whenever a
+        # new route arrives and rolled back whenever the lead clamp bites.
+        self.schedule_t0 = None
+        self.s_schedule = 0.0
 
         # --- Arc-length path from incoming Path ---
         self._raw_x = None
@@ -78,10 +110,14 @@ class ReferenceProcessor:
         # --- Publishers ---
         self.path_pub = rospy.Publisher(
             "/controller/reference_path", Path, queue_size=1)
+        self.velocity_pub = rospy.Publisher(
+            "/controller/reference_velocity", TwistStamped, queue_size=1)
         self.traj_pub = rospy.Publisher(
             "/controller/reference_trajectory", TrajectoryPoint, queue_size=1)
         self.traj_window_pub = rospy.Publisher(
             "/controller/reference_trajectory_window", TrajectoryPointWindow, queue_size=1)
+        self.schedule_lag_pub = rospy.Publisher(
+            "/controller/schedule_lag_s", Float64, queue_size=1)
 
         # --- Timer ---
         self.timer = rospy.Timer(rospy.Duration(1.0 / rate), self._update)
@@ -89,9 +125,11 @@ class ReferenceProcessor:
         self.path_timeout = path_timeout
 
         rospy.loginfo("Reference processor ready: ref_topic=%s, L_d=%.2f, "
-                      "n_resample=%d, max_speed=%.2f",
+                      "n_resample=%d, max_speed=%.2f, progress_mode=%s, "
+                      "max_lead=%.2f m",
                       ref_topic, self.lookahead_distance,
-                      self.n_resample, self.max_speed)
+                      self.n_resample, self.max_speed, self.progress_mode,
+                      self.max_schedule_lead)
 
     # --- Callbacks ---
 
@@ -114,88 +152,45 @@ class ReferenceProcessor:
             y[i] = ps.pose.position.y
             z[i] = ps.pose.position.z
 
-        # Compute yaw from the geometric tangent.  Do not trust the incoming
-        # pose yaw: the global route's tangent is the canonical heading.
-        yaw = np.zeros(n)
-        for i in range(n - 1):
-            yaw[i] = math.atan2(y[i + 1] - y[i], x[i + 1] - x[i])
-        yaw[-1] = yaw[-2] if n >= 2 else 0.0
-
-        # Smooth yaw with a simple moving average to reduce noise
-        if n >= 3:
-            yaw_smooth = yaw.copy()
-            for i in range(1, n - 1):
-                yaw_smooth[i] = _lerp_angle(
-                    _lerp_angle(yaw[i - 1], yaw[i], 0.5),
-                    _lerp_angle(yaw[i], yaw[i + 1], 0.5), 0.5)
-            yaw_smooth[0] = yaw[0]
-            yaw_smooth[-1] = yaw[-1]
-            yaw = yaw_smooth
-
-        # Cumulative arc length
-        s = np.zeros(n)
-        for i in range(1, n):
-            ds = math.hypot(x[i] - x[i - 1], y[i] - y[i - 1])
-            s[i] = s[i - 1] + ds
-        total_length = s[-1]
-
-        # Signed curvature from the arc-length tangent.  The old code used
-        # |dyaw|/ds, which overestimates curvature at wrapped angles and does
-        # not distinguish left/right turns.
-        curvature = np.zeros(n)
-        for i in range(1, n - 1):
-            ds = max(s[i + 1] - s[i - 1], 1e-6)
-            curvature[i] = _wrap(yaw[i + 1] - yaw[i - 1]) / ds
-        if n > 1:
-            curvature[0] = curvature[1]
-            curvature[-1] = curvature[-2]
-
-        # Curvature-limited speed followed by forward/backward acceleration
-        # passes.  This creates a physically continuous speed profile instead
-        # of independently changing speed at every point.
-        speed_limit = np.minimum(self.max_speed,
-                                 self.max_yaw_rate / np.maximum(np.abs(curvature), 1e-6))
-        speed_limit = np.maximum(speed_limit, 0.08)
-        speed = speed_limit.copy()
-        speed[0] = min(speed[0], self.prev_speed if self.prev_speed > 0.0 else speed[0])
-        for i in range(1, n):
-            ds = max(s[i] - s[i - 1], 1e-6)
-            speed[i] = min(speed[i], math.sqrt(max(0.0, speed[i - 1] ** 2 + 2.0 * self.max_accel * ds)))
-        speed[-1] = 0.0
-        for i in range(n - 2, -1, -1):
-            ds = max(s[i + 1] - s[i], 1e-6)
-            speed[i] = min(speed[i], math.sqrt(max(0.0, speed[i + 1] ** 2 + 2.0 * self.max_decel * ds)))
-        self.prev_speed = float(speed[0])
-
-        # Build a monotonic time-of-arrival table from the spatial speed
-        # profile.  This is used only for the MPC window; PID keeps receiving
-        # the original spatially uniform path.  The minimum denominator avoids
-        # an infinite interval at the stationary goal point.
-        time_from_start = np.zeros(n)
-        for i in range(1, n):
-            ds = max(s[i] - s[i - 1], 1e-9)
-            avg_speed = max(0.08, 0.5 * (speed[i - 1] + speed[i]))
-            time_from_start[i] = time_from_start[i - 1] + ds / avg_speed
+        # The profile is shared with the offline scorer so that evaluation
+        # measures the same plan the controller is handed; see arc_profile.py.
+        profile = build_arc_profile(
+            x, y, z,
+            max_speed=self.max_speed,
+            max_yaw_rate=self.max_yaw_rate,
+            max_yaw_accel=self.max_yaw_accel,
+            max_accel=self.max_accel,
+            max_decel=self.max_decel,
+            yaw_smoothing_window=self.yaw_smoothing_window,
+            yaw_accel_reserve_ratio=self.yaw_accel_reserve_ratio,
+            # None, not 0.0: with no speed carried over from a previous plan
+            # the start is unconstrained, matching the pre-refactor behaviour.
+            initial_speed=self.prev_speed if self.prev_speed > 0.0 else None)
+        self.prev_speed = float(profile['speed'][0])
 
         signature = (float(x[0]), float(y[0]), float(x[-1]), float(y[-1]), int(n))
         if self.path_signature is not None and signature != self.path_signature:
             self.s_progress = 0.0
             self.prev_speed = 0.0
+            # A replanned route starts where the vehicle is now, so its
+            # schedule starts now too; any lag against the old route is not
+            # carried across.
+            self.schedule_t0 = None
+            self.s_schedule = 0.0
         self.path_signature = signature
-        self.arc_path = {
-            'x': x, 'y': y, 'z': z,
-            'yaw': yaw, 'curvature': curvature, 'speed': speed, 's': s,
-            'time': time_from_start,
-            'total_length': total_length,
-        }
+        self.arc_path = profile
 
-        # Reset progress if path changed significantly
-        if self.s_progress > total_length:
+        if self.s_progress > profile['total_length']:
             self.s_progress = 0.0
 
+        # This assignment used to sit after a ``return`` in another method, so
+        # path_stamp stayed None and the staleness guard in _update never
+        # fired.  privileged_teacher republishes at 5 Hz, well inside
+        # path_timeout_s, so the guard now only trips if the teacher dies.
         self.path_stamp = msg.header.stamp
-        rospy.loginfo("Path received: %d points, length=%.2f m",
-                      n, total_length)
+        rospy.loginfo_throttle(
+            5.0, "Path received: %d points, length=%.2f m, planned %.1f s",
+            n, profile['total_length'], profile['time'][-1])
 
     def _update(self, _event):
         now = rospy.Time.now()
@@ -222,9 +217,9 @@ class ReferenceProcessor:
         s_proj = min(s_proj, self.arc_path['total_length'])
         self.s_progress = s_proj
 
-        # ③ Lookahead window [s_proj, s_proj + L_d]
-        s_start = s_proj
-        s_end = min(s_proj + self.lookahead_distance,
+        # ③ Anchor the window on the absolute schedule, not on the vehicle.
+        s_start = self._schedule_anchor(now, s_proj)
+        s_end = min(s_start + self.lookahead_distance,
                     self.arc_path['total_length'])
 
         # If too close to end, shift window back slightly
@@ -244,6 +239,45 @@ class ReferenceProcessor:
         # ⑤ Publish
         self._publish_path(local_spatial, now)
         self._publish_trajectory(local_temporal, now, sample_dt=self.mpc_dt)
+
+    # --- Absolute schedule ---
+
+    def _schedule_anchor(self, now, s_proj):
+        """Arc position the vehicle is supposed to occupy at ``now``.
+
+        In ``projection`` mode this degenerates to the vehicle's own
+        projection, which is the legacy behaviour: the reference follows the
+        vehicle, so the along-track error it reports is always zero.
+        """
+        if self.progress_mode == "projection":
+            self.s_schedule = s_proj
+            self._publish_schedule_lag(0.0)
+            return s_proj
+
+        s_arr = self.arc_path['s']
+        t_arr = self.arc_path['time']
+        if self.schedule_t0 is None:
+            self.schedule_t0 = now
+        elapsed = (now - self.schedule_t0).to_sec()
+        s_sched = float(np.interp(elapsed, t_arr, s_arr))
+
+        # Clamp the lead, and roll the schedule clock back to match.  Without
+        # the rollback the clock would keep accruing an invisible debt and the
+        # reference would jump forward the moment the vehicle caught up.
+        if s_sched > s_proj + self.max_schedule_lead:
+            s_sched = min(s_proj + self.max_schedule_lead, s_arr[-1])
+            self.schedule_t0 = now - rospy.Duration(
+                float(np.interp(s_sched, s_arr, t_arr)))
+            elapsed = (now - self.schedule_t0).to_sec()
+
+        self.s_schedule = s_sched
+        # Negative means the vehicle is behind where the plan wants it.
+        self._publish_schedule_lag(
+            float(np.interp(s_proj, s_arr, t_arr)) - elapsed)
+        return s_sched
+
+    def _publish_schedule_lag(self, lag_s):
+        self.schedule_lag_pub.publish(Float64(data=float(lag_s)))
 
     # --- Arc-length projection ---
 
@@ -369,18 +403,20 @@ class ReferenceProcessor:
         for i, ref in enumerate(local):
             prev = local[max(0, i - 1)]
             nxt = local[min(len(local) - 1, i + 1)]
+            is_endpoint = i == 0 or i == len(local) - 1
             if sample_dt is None:
                 ds = math.hypot(nxt['x'] - prev['x'], nxt['y'] - prev['y'])
                 avg_speed = max(0.08, 0.5 * (prev['speed'] + nxt['speed']))
                 dt = max(1e-3, ds / avg_speed)
             else:
                 dt = max(1e-3, float(sample_dt))
-            ddx = (nxt['dx'] - prev['dx']) / dt
-            ddy = (nxt['dy'] - prev['dy']) / dt
+            difference_dt = dt if is_endpoint else 2.0 * dt
+            ddx = (nxt['dx'] - prev['dx']) / difference_dt
+            ddy = (nxt['dy'] - prev['dy']) / difference_dt
             dpsi = ref['speed'] * ref.get('curvature', 0.0)
             dpsi_prev = prev['speed'] * prev.get('curvature', 0.0)
             dpsi_next = nxt['speed'] * nxt.get('curvature', 0.0)
-            ddpsi = (dpsi_next - dpsi_prev) / dt
+            ddpsi = (dpsi_next - dpsi_prev) / difference_dt
             point = TrajectoryPoint()
             point.header.stamp = now
             point.header.frame_id = "world_ned"
@@ -395,6 +431,11 @@ class ReferenceProcessor:
         window = TrajectoryPointWindow(header=Header(stamp=now, frame_id="world_ned"),
                                        points=points, valid=True, trajectory_id="arc_length")
         self.traj_window_pub.publish(window)
+        velocity = TwistStamped()
+        velocity.header.stamp = now
+        velocity.header.frame_id = "world_ned"
+        velocity.twist = points[0].twist
+        self.velocity_pub.publish(velocity)
         # Keep publishing the first point for legacy consumers.
         self.traj_pub.publish(points[0])
 

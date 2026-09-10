@@ -8,6 +8,10 @@
   <arg name="enable" default="true"/>
   <arg name="headless" default="false"
        doc="Run Stonefish in console/no-GPU mode"/>
+  <arg name="progress_mode" default="schedule"
+       doc="schedule = absolute plan clock; projection = legacy reference
+            re-anchored to the vehicle each cycle (along-track error is then
+            identically zero).  Use projection only for A/B comparison."/>
 
   <!-- Load parameters at global level -->
   <rosparam command="load" file="$(find hofa_mpc_ros)/config/vehicle.yaml" />
@@ -36,6 +40,8 @@
   <node pkg="hofa_mpc_ros" type="reference_processor.py"
         name="reference_processor" output="screen">
     <rosparam command="load" file="$(find hofa_mpc_ros)/config/reference_processor.yaml" />
+    <!-- After the rosparam load so it overrides the file value. -->
+    <param name="progress_mode" value="$(arg progress_mode)"/>
     <param name="vehicle_name" value="$(arg vehicle_name)"/>
   </node>
 
@@ -57,15 +63,30 @@
   <group if="$(eval controller == 'pid')">
     <node pkg="aquaflow_stonefish" type="planar_pid_tracker.py"
           name="planar_pid_tracker" output="screen">
+      <!-- Same nominal plant the MPC uses, for the inner-loop feedforward. -->
+      <rosparam command="load" file="$(find hofa_mpc_ros)/config/vehicle.yaml" />
       <param name="vehicle_name" value="$(arg vehicle_name)"/>
-      <param name="kp_xy" value="100.0"/>  <!-- 增大xy增益 -->
-      <param name="kd_xy" value="10.0"/>  <!-- 增大阻尼 -->
-      <param name="ki_xy" value="0.5"/>   <!-- 添加积分 -->
-      <param name="kp_yaw" value="4.0"/>
-      <param name="kd_yaw" value="1.0"/>
-      <param name="max_fx" value="20.0"/> <!-- 增大力限制 -->
-      <param name="max_fy" value="20.0"/>
-      <param name="max_nz" value="3.0"/>
+      <param name="control_mode" value="dual_loop"/>
+      <!-- Trajectory tracking: consume the same time-parameterized window as
+           the MPC.  lookahead_time_s / mpc_dt_s selects the window index. -->
+      <param name="trajectory_window_topic"
+             value="/controller/reference_trajectory_window"/>
+      <param name="lookahead_time_s" value="0.0"/>
+      <param name="kp_pos_xy" value="0.8"/>
+      <param name="kp_pos_yaw" value="1.2"/>
+      <param name="kp_vel_x" value="25.0"/>
+      <param name="kp_vel_y" value="20.0"/>
+      <param name="ki_vel_x" value="15.0"/>
+      <param name="ki_vel_y" value="15.0"/>
+      <param name="kp_vel_yaw" value="2.5"/>
+      <param name="ki_vel_yaw" value="1.0"/>
+      <param name="max_cmd_vx" value="0.45"/>
+      <param name="max_cmd_vy" value="0.45"/>
+      <param name="max_cmd_wz" value="0.6"/>
+      <param name="max_fx" value="50.0"/>
+      <param name="max_fy" value="50.0"/>
+      <param name="max_nz" value="5.0"/>
+      <param name="velocity_reference_topic" value="/controller/reference_velocity"/>
       <param name="reference_topic" value="/controller/reference_path"/>
     </node>
   </group>

@@ -1,11 +1,11 @@
 # HOFA-MPC controller parameters (loaded into controller node private namespace)
 mpc:
-  control_rate_hz: 10.0
+  control_rate_hz: 20.0
   horizon: 10
 
   weights:
-    pose: [55.0, 55.0, 32.0]
-    pose_rate: [50.0, 50.0, 5.5]
+    pose: [20.0, 20.0, 20.0]
+    pose_rate: [4.0, 4.0, 4.0]
     virtual_input: [0.20, 0.20, 0.14]
     input_increment: [1.20, 1.20, 0.75]
     terminal_multiplier: 4.0

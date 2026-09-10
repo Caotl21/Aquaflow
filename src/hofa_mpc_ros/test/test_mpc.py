@@ -74,6 +74,30 @@ class TestErrorState:
 
 
 class TestMPCSolver:
+    def test_previous_input_sequence_is_shifted(self, mpc):
+        mpc._prev_w = np.arange(mpc.Np * 3, dtype=float).reshape(mpc.Np, 3)
+        shifted = mpc.previous_input_sequence()
+        np.testing.assert_allclose(shifted[:-1], mpc._prev_w[1:])
+        np.testing.assert_allclose(shifted[-1], np.zeros(3))
+
+    def test_predict_nominal_states_reconstructs_body_velocity(self, mpc):
+        state = VehicleState(psi=np.pi / 2.0, u=1.0)
+        refs = [ReferencePoint(psi=np.pi / 2.0, dx=0.0, dy=0.0)
+                for _ in range(mpc.Np)]
+        predicted = mpc.predict_nominal_states(state, refs)
+        np.testing.assert_allclose(predicted[0, 3:], [1.0, 0.0, 0.0],
+                                   atol=1e-10)
+
+    def test_time_varying_bounds_are_applied(self, mpc):
+        state = VehicleState()
+        refs = [ReferencePoint() for _ in range(mpc.Np)]
+        bounds = [VirtualInputBounds(
+            lower=np.array([-1.0 - 0.01 * i] * 3),
+            upper=np.array([1.0 + 0.01 * i] * 3))
+            for i in range(mpc.Np)]
+        sol = mpc.solve(state, refs, bounds=bounds)
+        assert sol.success
+
     def test_analytic_gradient_matches_central_difference(self, mpc):
         """The new adjoint gradient must match the objective numerically."""
         rng = np.random.RandomState(7)

@@ -10,6 +10,7 @@ project(aquaflow_stonefish)
 find_package(catkin REQUIRED COMPONENTS
   cola2_msgs
   geometry_msgs
+  hofa_mpc_ros
   nav_msgs
   roscpp
   rospy

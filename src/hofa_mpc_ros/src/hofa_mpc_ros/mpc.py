@@ -54,6 +54,13 @@ class HofaMPC:
         """Clear warm start and internal state."""
         self._prev_w = np.zeros((self.Np, 3))
 
+    def previous_input_sequence(self) -> np.ndarray:
+        """Return the previous optimal correction sequence shifted one step."""
+        shifted = np.zeros_like(self._prev_w)
+        if self.Np > 1:
+            shifted[:-1] = self._prev_w[1:]
+        return shifted
+
     def compute_error_state(self, state: VehicleState,
                             refs: list) -> np.ndarray:
         """Compute MPC error state z = [e_eta; e_dot_eta].
@@ -99,6 +106,44 @@ class HofaMPC:
             affine[i, 2] = wrap_to_pi(
                 self.dt * refs[i].dpsi + refs[i].psi - refs[i + 1].psi)
         return affine
+
+    def predict_error_states(self, z0: np.ndarray, w_seq: np.ndarray,
+                             ref_affine: np.ndarray = None) -> np.ndarray:
+        """Predict error states for a fixed correction sequence."""
+        states = np.zeros((self.Np + 1, 6))
+        states[0] = z0
+        for i in range(self.Np):
+            states[i + 1] = self.Ad @ states[i] + self.Bd @ w_seq[i]
+            if ref_affine is not None and i < self.Np - 1:
+                states[i + 1] += ref_affine[i]
+        return states
+
+    def predict_nominal_states(self, state: VehicleState,
+                               refs: list) -> np.ndarray:
+        """Predict physical states used by Layer 1.
+
+        The prediction uses the shifted previous solution so the input
+        bounds can be frozen before solving the current linear MPC.
+        """
+        z0 = self.compute_error_state(state, refs)
+        ref_affine = self._reference_affine_terms(refs)
+        z_seq = self.predict_error_states(
+            z0, self.previous_input_sequence(), ref_affine)
+        predicted = np.zeros((self.Np, 6))
+        for i in range(self.Np):
+            ref = refs[i]
+            pose = ref.pose_array() + z_seq[i, :3]
+            psi = wrap_to_pi(pose[2])
+            world_velocity = ref.velocity_array() + z_seq[i, 3:]
+            c, s = np.cos(psi), np.sin(psi)
+            body_velocity = np.array([
+                c * world_velocity[0] + s * world_velocity[1],
+                -s * world_velocity[0] + c * world_velocity[1],
+                world_velocity[2],
+            ])
+            predicted[i] = np.concatenate([
+                [pose[0], pose[1], psi], body_velocity])
+        return predicted
 
     def _cost_and_grad(self, w_flat, z0, ref_affine):
         """Return the exact cost and gradient for one MPC decision vector.
@@ -169,18 +214,29 @@ class HofaMPC:
         # reference.  They are independent of the optimization variables.
         ref_affine = self._reference_affine_terms(refs)
 
-        # Warm start from previous solution
-        w0 = self._prev_w.flatten()
+        # Warm start from the shifted previous solution.
+        w0 = (self.previous_input_sequence()
+              if self.params.warm_start else np.zeros_like(self._prev_w)).flatten()
 
         # ``bounds`` are bounds on total virtual acceleration.  The decision
         # variable is the tracking correction w, so shift each stage by the
         # corresponding reference acceleration.
         if bounds is not None:
+            if isinstance(bounds, VirtualInputBounds):
+                bounds_sequence = [bounds] * Np
+            else:
+                bounds_sequence = list(bounds)
+                if len(bounds_sequence) != Np:
+                    raise ValueError(
+                        "bounds sequence length must equal MPC horizon")
             lb_bounds = np.concatenate([
-                bounds.lower - refs[i].acceleration_array() for i in range(Np)])
+                bounds_sequence[i].lower - refs[i].acceleration_array()
+                for i in range(Np)])
             ub_bounds = np.concatenate([
-                bounds.upper - refs[i].acceleration_array() for i in range(Np)])
+                bounds_sequence[i].upper - refs[i].acceleration_array()
+                for i in range(Np)])
         else:
+            bounds_sequence = None
             lb_bounds = np.full(n_var, -10.0)
             ub_bounds = np.full(n_var, 10.0)
 
@@ -251,7 +307,8 @@ class HofaMPC:
             iterations=iterations,
             status=status,
             message=message,
-            bounds=bounds or VirtualInputBounds(),
+            bounds=(bounds_sequence[0] if bounds_sequence
+                    else VirtualInputBounds()),
         )
 
     def predict_states(self, z0: np.ndarray,
@@ -261,8 +318,4 @@ class HofaMPC:
         Returns:
             (Np+1, 6) array of predicted error states
         """
-        states = np.zeros((self.Np + 1, 6))
-        states[0] = z0
-        for i in range(self.Np):
-            states[i + 1] = self.Ad @ states[i] + self.Bd @ w_seq[i]
-        return states
+        return self.predict_error_states(z0, w_seq)

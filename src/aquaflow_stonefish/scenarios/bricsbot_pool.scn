@@ -75,7 +75,7 @@
 
 	<include file="$(find aquaflow_stonefish)/scenarios/bricsbot_reference.scn">
 		<arg name="vehicle_name" value="bricsbot"/>
-		<arg name="position" value="0.0 0.0 2.0"/>
+		<arg name="position" value="0.0 0.0 0.0"/>
 		<arg name="orientation" value="0.0 0.0 0.0"/>
 	</include>
 </scenario>

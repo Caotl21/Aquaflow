@@ -6,6 +6,7 @@ then derives a conservative inner box for use as MPC constraints.
 from abc import ABC, abstractmethod
 from itertools import product
 import numpy as np
+from scipy.optimize import linprog
 from .types import ThrusterConfig, VehicleParams, VehicleState, VirtualInputBounds
 from .model import ThreeDOFModel
 from .hofa import kinematic_matrix, kinematic_matrix_dot, drag_force
@@ -105,29 +106,8 @@ class SafeInnerBoxStrategy(VirtualInputConstraintStrategy):
         if f_max is None:
             f_max = np.array([t.thrust_max for t in allocator.thrusters])
 
-        corners = list(product(*[[f_min[i], f_max[i]]
-                                 for i in range(allocator.n_thrusters)]))
-        accel_values = np.array([f_drift + G_full @ np.array(c)
-                                 for c in corners])
-
-        lower_raw = accel_values.min(axis=0)
-        upper_raw = accel_values.max(axis=0)
-
-        center = 0.5 * (upper_raw + lower_raw)
-        half = 0.5 * (upper_raw - lower_raw) * scale
-
-        lb = center - half
-        ub = center + half
-
-        # Verify all 8 corners of the inner box are assignable
-        inner_corners = list(product(*[[lb[i], ub[i]] for i in range(3)]))
-        for corner in inner_corners:
-            corner_arr = np.array(corner)
-            # The corner should be within the reachable set
-            # (approximately, since inner box is conservative)
-            pass  # By construction of safe inner box, this holds
-
-        return VirtualInputBounds(lower=lb, upper=ub)
+        return self._build_verified_box(
+            f_drift, G_full, f_min, f_max, scale)
 
     def compute_for_step(self, state_pred: np.ndarray,
                          model: ThreeDOFModel,
@@ -153,15 +133,45 @@ class SafeInnerBoxStrategy(VirtualInputConstraintStrategy):
         if f_max is None:
             f_max = np.array([t.thrust_max for t in allocator.thrusters])
 
-        corners = list(product(*[[f_min[i], f_max[i]]
-                                 for i in range(allocator.n_thrusters)]))
-        accel_values = np.array([f_drift + G_full @ np.array(c)
-                                 for c in corners])
+        return self._build_verified_box(
+            f_drift, G_full, f_min, f_max, scale)
 
-        lower_raw = accel_values.min(axis=0)
-        upper_raw = accel_values.max(axis=0)
+    @staticmethod
+    def _build_verified_box(f_drift: np.ndarray, gain: np.ndarray,
+                            f_min: np.ndarray, f_max: np.ndarray,
+                            requested_scale: float) -> VirtualInputBounds:
+        """Build an axis-aligned box verified inside the reachable set."""
+        f_mid = 0.5 * (f_min + f_max)
+        f_half = 0.5 * (f_max - f_min)
+        center = f_drift + gain @ f_mid
+        raw_half = np.sum(np.abs(gain) * f_half, axis=1)
+        scale = float(np.clip(requested_scale, 0.0, 1.0))
 
-        center = 0.5 * (upper_raw + lower_raw)
-        half = 0.5 * (upper_raw - lower_raw) * scale
+        def feasible(candidate_scale):
+            half = raw_half * candidate_scale
+            for corner in product(*[[center[i] - half[i],
+                                     center[i] + half[i]]
+                                    for i in range(3)]):
+                result = linprog(
+                    np.zeros(gain.shape[1]),
+                    A_eq=gain,
+                    b_eq=np.asarray(corner) - f_drift,
+                    bounds=list(zip(f_min, f_max)),
+                    method="highs",
+                )
+                if not result.success:
+                    return False
+            return True
 
+        if not feasible(scale):
+            lower, upper = 0.0, scale
+            for _ in range(24):
+                midpoint = 0.5 * (lower + upper)
+                if feasible(midpoint):
+                    lower = midpoint
+                else:
+                    upper = midpoint
+            scale = lower
+
+        half = raw_half * scale
         return VirtualInputBounds(lower=center - half, upper=center + half)
