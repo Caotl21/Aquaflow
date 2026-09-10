@@ -84,10 +84,13 @@ class ReferenceProcessor:
 
         # --- State ---
         self.robot_xy = None
+        self.robot_speed = 0.0
         self.robot_stamp = None
         self.arc_path = None  # dict with x, y, z, yaw, speed, s arrays
         self.s_progress = 0.0
-        self.prev_speed = 0.0
+        # Speed the current route's profile starts from, pinned once when the
+        # route arrives so every republish of it yields the same profile.
+        self.route_initial_speed = 0.0
         self.path_stamp = None
         self.path_signature = None
         # Absolute schedule state.  ``schedule_t0`` is the ROS time at which
@@ -136,6 +139,10 @@ class ReferenceProcessor:
     def _odom_cb(self, msg):
         self.robot_xy = (msg.pose.pose.position.x,
                          msg.pose.pose.position.y)
+        # Stonefish publishes linear velocity in the body frame; its magnitude
+        # is frame-independent, which is all the speed profile needs.
+        self.robot_speed = math.hypot(msg.twist.twist.linear.x,
+                                      msg.twist.twist.linear.y)
         self.robot_stamp = msg.header.stamp
 
     def _path_cb(self, msg):
@@ -152,9 +159,32 @@ class ReferenceProcessor:
             y[i] = ps.pose.position.y
             z[i] = ps.pose.position.z
 
+        # Decide the route identity *before* profiling: the start speed below
+        # depends on whether this is a new route, so building first would
+        # profile a replan against the previous route's state.
+        signature = (float(x[0]), float(y[0]), float(x[-1]), float(y[-1]), int(n))
+        if signature != self.path_signature:
+            # Pin the start speed to what the vehicle is actually doing as the
+            # route is issued, once per route.  Re-deriving it on every
+            # republish (the teacher resends at 5 Hz) would let the profile --
+            # and therefore the schedule clock -- drift with the measurement.
+            #
+            # Leaving the start unconstrained instead is what made the plan
+            # demand 0.2 m/s at s=0 while the vehicle sat still there: the
+            # schedule was born ~0.83 s / 0.17 m ahead of anything reachable,
+            # and the controller spent the whole run chasing that offset.
+            self.route_initial_speed = float(self.robot_speed or 0.0)
+            self.s_progress = 0.0
+            # A replanned route starts where the vehicle is now, so its
+            # schedule starts now too; any lag against the old route is not
+            # carried across.
+            self.schedule_t0 = None
+            self.s_schedule = 0.0
+        self.path_signature = signature
+
         # The profile is shared with the offline scorer so that evaluation
         # measures the same plan the controller is handed; see arc_profile.py.
-        profile = build_arc_profile(
+        self.arc_path = profile = build_arc_profile(
             x, y, z,
             max_speed=self.max_speed,
             max_yaw_rate=self.max_yaw_rate,
@@ -163,22 +193,7 @@ class ReferenceProcessor:
             max_decel=self.max_decel,
             yaw_smoothing_window=self.yaw_smoothing_window,
             yaw_accel_reserve_ratio=self.yaw_accel_reserve_ratio,
-            # None, not 0.0: with no speed carried over from a previous plan
-            # the start is unconstrained, matching the pre-refactor behaviour.
-            initial_speed=self.prev_speed if self.prev_speed > 0.0 else None)
-        self.prev_speed = float(profile['speed'][0])
-
-        signature = (float(x[0]), float(y[0]), float(x[-1]), float(y[-1]), int(n))
-        if self.path_signature is not None and signature != self.path_signature:
-            self.s_progress = 0.0
-            self.prev_speed = 0.0
-            # A replanned route starts where the vehicle is now, so its
-            # schedule starts now too; any lag against the old route is not
-            # carried across.
-            self.schedule_t0 = None
-            self.s_schedule = 0.0
-        self.path_signature = signature
-        self.arc_path = profile
+            initial_speed=self.route_initial_speed)
 
         if self.s_progress > profile['total_length']:
             self.s_progress = 0.0
@@ -189,8 +204,9 @@ class ReferenceProcessor:
         # path_timeout_s, so the guard now only trips if the teacher dies.
         self.path_stamp = msg.header.stamp
         rospy.loginfo_throttle(
-            5.0, "Path received: %d points, length=%.2f m, planned %.1f s",
-            n, profile['total_length'], profile['time'][-1])
+            5.0, "Path received: %d points, length=%.2f m, planned %.1f s, "
+            "v0=%.3f m/s", n, profile['total_length'], profile['time'][-1],
+            profile['speed'][0])
 
     def _update(self, _event):
         now = rospy.Time.now()

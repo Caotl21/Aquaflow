@@ -54,7 +54,11 @@ rosrun hofa_mpc_ros run_mpc_experiment.py --no-launch
 - **几何（按位置索引）**：`cross_track_error_m`、`geometric_path_error_m`，以及 `yaw_error_deg` / `speed_error_mps` —— 后两者对比的是剖面在**车当前弧长位置**处的切向和速度，回答"在这个位置上姿态和速度对不对"。
 - **时序（按计划索引）**：`progress_error_m`（当前弧长 − 计划弧长）、`schedule_lag_s`（正=落后，负=超前）、`time_lag_at_finish_s`（在车实际到达的弧长处的时间偏差，未跑完也有定义）、`completion_ratio`。
 
-另有 `speed_limit_violation_ratio`、`mean_speed_mps`、`max_speed_mps` 用于直接暴露超速，`final_distance_to_goal_m` 作为 `finish_reason` 之外的连续量，以及 `turn_yaw_error_deg` / `turn_yaw_rate_error_radps` 用于单独评估转弯阶段表现。
+超速相关：`mean_speed_mps`、`max_speed_mps`、`speed_limit_violation_ratio`（阈值为 `max_speed` 上浮 5%，见 `SPEED_LIMIT_TOLERANCE`，实际阈值记在 `speed_limit_threshold_mps`）和 `speed_excess_mps`。
+
+注意：剖面的巡航速度**就等于** `max_speed`，所以零容差下任何居中的跟踪波动都会给出约 50% 的违规率 —— 该比例单独看无法区分"贴着上限巡航"和"真超速"。判断超速要把它和 `mean_speed_mps`（均值是否高于上限）、`speed_excess_mps`（超出幅度）一起看。
+
+另有 `final_distance_to_goal_m` 作为 `finish_reason` 之外的连续量，以及 `turn_yaw_error_deg` / `turn_yaw_rate_error_radps` 用于单独评估转弯阶段表现。
 
 已有实验可用新口径离线重算，不需要仿真器或 ROS master：
 

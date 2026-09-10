@@ -63,6 +63,12 @@ GOAL_RADIUS_M = 0.25
 GOAL_SPEED_MPS = 0.08
 GOAL_MIN_TIME_S = 2.0
 
+# Band above the profile's max_speed that counts as tracking ripple rather
+# than a violation.  The profile cruises *at* max_speed, so a zero-tolerance
+# test reports ~50% for any well-centred run and cannot distinguish it from
+# real overspeed; speed_excess_mps carries the magnitude either way.
+SPEED_LIMIT_TOLERANCE = 0.05
+
 
 def wrap(angle):
     return math.atan2(math.sin(angle), math.cos(angle))
@@ -331,6 +337,7 @@ def compute_metrics(odom, model, status, pwm, goal_xy, finish_reason):
     duration = max(0.0, odom[-1]["stamp"] - t0)
     planned_duration = model["planned_duration"]
     speeds = np.asarray([row["speed_world"] for row in odom], dtype=float)
+    threshold = model["max_speed"] * (1.0 + SPEED_LIMIT_TOLERANCE)
     solver_success = [x["solver_success"] for x in status]
     callback_times = np.asarray([x["callback_time_ms"] for x in status],
                                 dtype=float)
@@ -361,8 +368,14 @@ def compute_metrics(odom, model, status, pwm, goal_xy, finish_reason):
         "final_speed_mps": float(odom[-1]["speed_world"]),
         "mean_speed_mps": float(np.mean(speeds)),
         "max_speed_mps": float(np.max(speeds)),
-        "speed_limit_violation_ratio": float(
-            np.mean(speeds > model["max_speed"] + 1e-6)),
+        "speed_limit_violation_ratio": float(np.mean(speeds > threshold)),
+        "speed_limit_threshold_mps": float(threshold),
+        # Magnitude, not just incidence.  The ratio alone cannot separate
+        # "cruising at the limit with normal ripple" from "genuinely too
+        # fast", because the profile's cruise speed *is* max_speed: any
+        # symmetric tracking ripple puts ~50% of samples above it.  Read
+        # these together with mean_speed_mps.
+        "speed_excess_mps": stats(np.maximum(speeds - model["max_speed"], 0.0)),
         "cross_track_error_m": stats(cross),
         "geometric_path_error_m": stats(geom),
         "yaw_error_deg": stats(yaw_err, degrees=True),

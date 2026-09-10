@@ -75,7 +75,7 @@
       <param name="kp_pos_xy" value="0.8"/>
       <param name="kp_pos_yaw" value="1.2"/>
       <param name="kp_vel_x" value="25.0"/>
-      <param name="kp_vel_y" value="20.0"/>
+      <param name="kp_vel_y" value="80.0"/>
       <param name="ki_vel_x" value="15.0"/>
       <param name="ki_vel_y" value="15.0"/>
       <param name="kp_vel_yaw" value="2.5"/>
