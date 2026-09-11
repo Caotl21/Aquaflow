@@ -1,9 +1,9 @@
 # BricsBot vehicle dynamics parameters
 vehicle:
   # Mass matrix: diag(m_x, m_y, I_z) — values to be refined via simulation identification
-  mass_matrix: [7.94, 0.0, 0.0,
-                0.0, 7.94, 0.0,
-                0.0, 0.0, 0.15]
+  mass_matrix: [241.0, 0.0, 0.0,
+                0.0, 294.0, 0.0,
+                0.0, 0.0, 2.03]
   coriolis_enabled: false
   # Linear and quadratic drag coefficients [x, y, yaw]
   drag_linear: [54.0, 64.0, 1.4]

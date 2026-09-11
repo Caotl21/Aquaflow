@@ -154,6 +154,37 @@ class HofaMPCControllerNode:
         tp = rospy.get_param("~thrusters", {})
         self.thruster_params = tp
 
+        self._check_reference_dt()
+
+    def _check_reference_dt(self):
+        """Warn if the reference window's dt disagrees with the horizon step.
+
+        ``_control_cb`` indexes the window by ``i / control_rate_hz`` while
+        reference_processor builds it at ``i * mpc_dt_s``.  The two live in
+        separate YAML files, and a mismatch produces no error -- the controller
+        just tracks the wrong point in time, which looks like a tuning problem
+        rather than a configuration one.
+        """
+        reference_dt = rospy.get_param("/reference_processor/mpc_dt_s", None)
+        if reference_dt is None:
+            return
+        control_dt = 1.0 / self.mpc_params.control_rate_hz
+        if abs(float(reference_dt) - control_dt) > 1e-6:
+            rospy.logwarn(
+                "reference/controller dt mismatch: /reference_processor/"
+                "mpc_dt_s=%.4f s but 1/control_rate_hz=%.4f s. The horizon "
+                "will be indexed against the wrong reference times; set "
+                "control_rate_hz=%.4f to match.",
+                float(reference_dt), control_dt, 1.0 / float(reference_dt))
+
+        points = rospy.get_param("/reference_processor/mpc_horizon_points", None)
+        if points is not None and int(points) < self.mpc_params.horizon:
+            rospy.logwarn(
+                "horizon=%d exceeds the %d points published in the reference "
+                "window; the tail will be padded with the last point and adds "
+                "no real preview.",
+                self.mpc_params.horizon, int(points))
+
     def _build_allocator(self):
         tp = self.thruster_params
         n = int(tp.get("count", 4))

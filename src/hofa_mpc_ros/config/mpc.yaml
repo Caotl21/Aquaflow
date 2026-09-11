@@ -1,11 +1,22 @@
 # HOFA-MPC controller parameters (loaded into controller node private namespace)
 mpc:
-  control_rate_hz: 20.0
-  horizon: 10
+  # control_rate_hz MUST stay equal to 1/reference_processor/mpc_dt_s: the
+  # prediction step dt is derived from it, and the reference window is indexed
+  # by that step.  20 Hz + horizon 10 gave only 0.5 s of preview.
+  control_rate_hz: 10.0
+  # 20 steps x 0.1 s = 2.0 s preview, which is what the reference window has
+  # always carried (mpc_horizon_points: 20); half of it used to be discarded.
+  # Doubles the decision variables (30 -> 60), so solve time roughly doubles
+  # from the measured 27 ms mean -- still inside the 100 ms cycle at 10 Hz.
+  horizon: 20
 
   weights:
     pose: [20.0, 20.0, 20.0]
-    pose_rate: [4.0, 4.0, 4.0]
+    # Raised from 4.0: at 1/5 of the pose weight the solver traded velocity
+    # error for position error, leaving the speed loop underdamped -- it rang
+    # between 0.21 and 0.34 m/s with a ~10 s period against a 0.2 m/s
+    # reference.  Yaw rate is left slightly lower than the translational axes.
+    pose_rate: [10.0, 10.0, 8.0]
     virtual_input: [0.20, 0.20, 0.14]
     input_increment: [1.20, 1.20, 0.75]
     terminal_multiplier: 4.0

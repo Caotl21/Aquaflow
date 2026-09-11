@@ -4,8 +4,19 @@ lookahead_distance_m: 0.5
 n_resample_points: 20
 # The spatial window above is kept for PID.  MPC receives a separate
 # time-indexed window below: point i corresponds to t + i * mpc_dt_s.
+#
+# mpc_dt_s MUST equal 1/mpc/control_rate_hz in config/mpc.yaml: the controller
+# indexes this window by its own prediction step, so a mismatch silently makes
+# it track the wrong point in time.  hofa_mpc_controller_node checks this at
+# startup and warns.
+#
+# 0.1 rather than 0.05: at 0.05 the controller's 20-step horizon previewed only
+# 1.0 s, and with horizon 10 it was 0.5 s -- less than the 0.94 s needed to
+# brake from 0.30 to 0.13 m/s for the R=0.38 m corner, so the corner was
+# invisible until too late and the vehicle ran 0.83 m wide.  Widening dt costs
+# no solver time (same variable count) and doubles the preview.
 mpc_horizon_points: 20
-mpc_dt_s: 0.05
+mpc_dt_s: 0.1
 max_speed: 0.20
 max_yaw_rate: 0.5
 max_yaw_accel_radps2: 0.25

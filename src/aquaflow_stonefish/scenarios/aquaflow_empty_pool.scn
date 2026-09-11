@@ -91,7 +91,7 @@
 
 	<include file="$(find aquaflow_stonefish)/scenarios/bluerov2_reference.scn">
 		<arg name="vehicle_name" value="bluerov2"/>
-		<arg name="position" value="-5.0 0.0 0.0"/>
+		<arg name="position" value="-5.0 0.0 1.0"/>
 		<arg name="orientation" value="0.0 0.0 0.0"/>
 	</include>
 </scenario>
