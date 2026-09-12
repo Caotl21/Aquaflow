@@ -234,13 +234,17 @@ class ReferenceProcessor:
         self.s_progress = s_proj
 
         # ③ Anchor the window on the absolute schedule, not on the vehicle.
+        # The window is allowed to shrink as the route ends; the anchor must
+        # never be moved backwards to preserve its length.  Doing so puts the
+        # reference *behind* the vehicle at the one moment it is closest to
+        # the goal, and the controllers brake hard and deadlock against it --
+        # under "schedule" mode the plan clock reaches total_length on time
+        # regardless of where the vehicle actually is, so that rollback fired
+        # while the vehicle was still 0.3 m short.  A degenerate window with
+        # s_start == s_end is the correct "hold at the goal" reference.
         s_start = self._schedule_anchor(now, s_proj)
         s_end = min(s_start + self.lookahead_distance,
                     self.arc_path['total_length'])
-
-        # If too close to end, shift window back slightly
-        if s_end - s_start < 0.1 and self.arc_path['total_length'] > 0.1:
-            s_start = max(0.0, s_end - self.lookahead_distance)
 
         # ④ Resample window into N uniform points
         # Keep the spatially uniform path for PID and visualization.  MPC gets

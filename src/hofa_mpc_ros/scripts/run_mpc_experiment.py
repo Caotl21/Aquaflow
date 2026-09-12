@@ -219,7 +219,8 @@ def capture_runtime_config(args):
         "src/hofa_mpc_ros/model.py",
         "config/mpc.yaml",
         "config/reference_processor.yaml",
-        "config/vehicle.yaml",
+        "config/vehicle_sim.yaml",
+        "config/vehicle_real.yaml",
         "config/safety.yaml",
     ]
     source_hashes = {}

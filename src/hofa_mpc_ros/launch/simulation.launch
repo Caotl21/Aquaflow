@@ -8,13 +8,17 @@
   <arg name="enable" default="true"/>
   <arg name="headless" default="false"
        doc="Run Stonefish in console/no-GPU mode"/>
+  <arg name="platform" default="sim"
+       doc="Selects config/vehicle_&lt;platform&gt;.yaml: sim = Stonefish
+            (added mass ~20x the physical vehicle, see that file); real =
+            measured hardware parameters.  Never mix the two."/>
   <arg name="progress_mode" default="schedule"
        doc="schedule = absolute plan clock; projection = legacy reference
             re-anchored to the vehicle each cycle (along-track error is then
             identically zero).  Use projection only for A/B comparison."/>
 
   <!-- Load parameters at global level -->
-  <rosparam command="load" file="$(find hofa_mpc_ros)/config/vehicle.yaml" />
+  <rosparam command="load" file="$(find hofa_mpc_ros)/config/vehicle_$(arg platform).yaml" />
   <rosparam command="load" file="$(find hofa_mpc_ros)/config/simulator_interface.yaml" />
 
   <!-- 1. Start Stonefish simulator (via aquaflow_pool.launch) -->
@@ -50,7 +54,7 @@
     <node pkg="hofa_mpc_ros" type="hofa_mpc_controller_node.py"
           name="hofa_mpc_controller" output="screen">
       <!-- Load vehicle dynamics, MPC, and safety params into node private namespace -->
-      <rosparam command="load" file="$(find hofa_mpc_ros)/config/vehicle.yaml" />
+      <rosparam command="load" file="$(find hofa_mpc_ros)/config/vehicle_$(arg platform).yaml" />
       <rosparam command="load" file="$(find hofa_mpc_ros)/config/mpc.yaml" />
       <rosparam command="load" file="$(find hofa_mpc_ros)/config/safety.yaml" />
       <param name="vehicle_name" value="$(arg vehicle_name)"/>
@@ -64,7 +68,7 @@
     <node pkg="aquaflow_stonefish" type="planar_pid_tracker.py"
           name="planar_pid_tracker" output="screen">
       <!-- Same nominal plant the MPC uses, for the inner-loop feedforward. -->
-      <rosparam command="load" file="$(find hofa_mpc_ros)/config/vehicle.yaml" />
+      <rosparam command="load" file="$(find hofa_mpc_ros)/config/vehicle_$(arg platform).yaml" />
       <param name="vehicle_name" value="$(arg vehicle_name)"/>
       <param name="control_mode" value="dual_loop"/>
       <!-- Trajectory tracking: consume the same time-parameterized window as

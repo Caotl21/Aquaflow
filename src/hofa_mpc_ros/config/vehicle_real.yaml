@@ -1,0 +1,59 @@
+# BricsBot dynamics for the PHYSICAL robot.
+#
+# Every hydrodynamic number here must come from a measurement on the real
+# vehicle.  Do NOT copy them from vehicle_sim.yaml: Stonefish's added mass is
+# derived from an ellipsoid enclosing the collision mesh and runs ~20x high for
+# this open-frame hull.  Using the simulator's values on hardware makes the
+# inertial feedforward over-command by the same factor during acceleration --
+# under-estimating inertia merely makes the vehicle sluggish and the
+# integrator recovers, but over-estimating it drives the thrusters hard on
+# every speed change.
+#
+# Identify in this order (see scripts/fit_drag_coefficients.py):
+#   1. --mode drag        constant force, wait for terminal speed.  At steady
+#                         state F = D(u) and inertia does not appear, so the
+#                         drag coefficients are mass-independent.
+#   2. --mode added-mass  step response, with the drag from step 1 held fixed.
+#                         Only the inertia is left unknown.
+# Fitting all three at once on one transient is what produced a negative sway
+# drag coefficient during simulation work; the order matters.
+vehicle:
+  # Measured on a scale.  Same as the simulator.
+  dry_mass: [7.94, 7.94, 0.15]
+  # TODO(identify): placeholder only.  Expect roughly 0.1-2x the displaced
+  # mass (7.775 L ~ 8 kg of water), i.e. single-digit kg for surge and rather
+  # more for sway/heave on this flat hull.  Zero here means "not yet measured"
+  # and leaves the feedforward with rigid-body inertia only, which is the
+  # safe direction to be wrong in.
+  added_mass: [0.0, 0.0, 0.0]
+  coriolis_enabled: false
+  # TODO(identify): placeholder copied from the simulator's surge sweep.
+  drag_linear: [54.0, 54.0, 1.4]
+  drag_quadratic: [2.0, 2.0, 0.35]
+
+# Horizontal thrusters T1-T4 (matching hand-drawn diagram and actual hardware)
+thrusters:
+  count: 4
+  positions_xy:
+    - [ 0.12755, -0.12755]   # T1 right-front
+    - [ 0.12755,  0.12755]   # T2 left-front
+    - [-0.12755, -0.12755]   # T3 right-rear
+    - [-0.12755,  0.12755]   # T4 left-rear
+  directions_xy:
+    - [ 0.7071,  0.7071]   # T1    45° (forward + right)
+    - [ 0.7071, -0.7071]   # T2   -45° (forward + left)
+    - [-0.7071,  0.7071]   # T3   135° (backward + right)
+    - [-0.7071, -0.7071]   # T4  -135° (backward + left)
+  thrust_max: [67.67, 67.67, 67.67, 67.67]    # N (positive direction, from 26V sheet)
+  thrust_min: [-58.84, -58.84, -58.84, -58.84] # N (negative direction, from 26V sheet)
+  time_constant_s: 0.10
+  deadzone_n: 0.15
+
+# Generalized force scale (for parameter mismatch experiments)
+generalized_force_scale:
+  x_positive: 1.0
+  x_negative: 1.0
+  y_positive: 1.0
+  y_negative: 1.0
+  yaw_positive: 1.0
+  yaw_negative: 1.0

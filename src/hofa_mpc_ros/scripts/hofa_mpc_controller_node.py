@@ -26,6 +26,7 @@ from hofa_mpc_ros.coordinates import shortest_angle_error
 from hofa_mpc_ros.allocator import ThrusterAllocator
 from hofa_mpc_ros.types import ThrusterConfig
 from hofa_mpc_ros.safety import SafetySupervisor, SafetyParams
+from hofa_mpc_ros.vehicle_params import resolve_inertia, describe_inertia
 
 
 class HofaMPCControllerNode:
@@ -110,9 +111,10 @@ class HofaMPCControllerNode:
     def _load_params(self):
         # Vehicle params
         vp = rospy.get_param("~vehicle", {})
-        mass_list = vp.get("mass_matrix", [7.94, 0, 0, 0, 7.94, 0, 0, 0, 0.15])
+        mass_matrix, inertia_info = resolve_inertia(vp)
+        rospy.loginfo(describe_inertia(inertia_info))
         self.vehicle_params = VehicleParams(
-            mass_matrix=np.array(mass_list).reshape(3, 3),
+            mass_matrix=mass_matrix,
             drag_linear=np.array(vp.get("drag_linear", [8.0, 10.0, 1.4])),
             drag_quadratic=np.array(vp.get("drag_quadratic", [12.0, 15.0, 0.35])),
             coriolis_enabled=vp.get("coriolis_enabled", False),

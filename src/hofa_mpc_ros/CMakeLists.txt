@@ -35,6 +35,7 @@ catkin_install_python(PROGRAMS
   scripts/reference_processor.py
   scripts/run_mpc_experiment.py
   scripts/fit_drag_coefficients.py
+  scripts/run_identification.py
   scripts/trajectory_server_node.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )

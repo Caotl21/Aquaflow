@@ -1,0 +1,51 @@
+# BricsBot dynamics as seen in STONEFISH.  See vehicle_real.yaml for the
+# physical robot; do not copy numbers between the two files.
+vehicle:
+  # Rigid-body inertia [m_x, m_y, I_z].  From the scenario masses
+  # (0.50 hull + 7.44 ballast + 0.01 buoyancy = 7.95 kg); identical on the
+  # real vehicle.
+  dry_mass: [7.94, 7.94, 0.15]
+  # Hydrodynamic added mass, identified from run_20260911_174150 by a
+  # three-parameter fit (n=4131, residual 1.29 N vs 6.90 N with dry mass
+  # alone).  These are ~20x larger than a real vehicle of this displacement
+  # would show: Stonefish derives added mass from a minimum-volume ellipsoid
+  # enclosing the collision mesh (Polyhedron defaults to GeometryApproxType::
+  # AUTO -> ComputeEllipsoidalApprox), and that mesh is an open frame -- only
+  # 4.29 L of solid inside a 34 L envelope, versus 7.775 L actually displaced.
+  # The enclosing ellipsoid is therefore ~12x the displaced volume.  There is
+  # no scenario-level override: <hydrodynamics> only exposes drag.
+  added_mass: [233.06, 286.06, 1.88]
+  coriolis_enabled: false
+  # Linear and quadratic drag [x, y, yaw].
+  # WARNING: only drag_linear[0] came from a steady-state sweep.  The sway and
+  # yaw values were fitted on transient data against the wrong mass and are
+  # not trustworthy -- re-run fit_drag_coefficients.py in two stages.
+  drag_linear: [54.0, 64.0, 1.4]
+  drag_quadratic: [2.0, 15.0, 0.35]
+
+# Horizontal thrusters T1-T4 (matching hand-drawn diagram and actual hardware)
+thrusters:
+  count: 4
+  positions_xy:
+    - [ 0.12755, -0.12755]   # T1 right-front
+    - [ 0.12755,  0.12755]   # T2 left-front
+    - [-0.12755, -0.12755]   # T3 right-rear
+    - [-0.12755,  0.12755]   # T4 left-rear
+  directions_xy:
+    - [ 0.7071,  0.7071]   # T1    45° (forward + right)
+    - [ 0.7071, -0.7071]   # T2   -45° (forward + left)
+    - [-0.7071,  0.7071]   # T3   135° (backward + right)
+    - [-0.7071, -0.7071]   # T4  -135° (backward + left)
+  thrust_max: [67.67, 67.67, 67.67, 67.67]    # N (positive direction, from 26V sheet)
+  thrust_min: [-58.84, -58.84, -58.84, -58.84] # N (negative direction, from 26V sheet)
+  time_constant_s: 0.10
+  deadzone_n: 0.15
+
+# Generalized force scale (for parameter mismatch experiments)
+generalized_force_scale:
+  x_positive: 1.0
+  x_negative: 1.0
+  y_positive: 1.0
+  y_negative: 1.0
+  yaw_positive: 1.0
+  yaw_negative: 1.0

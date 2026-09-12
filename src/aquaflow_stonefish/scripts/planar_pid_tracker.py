@@ -20,6 +20,7 @@ from nav_msgs.msg import Odometry, Path
 from std_msgs.msg import Float64
 from visualization_msgs.msg import Marker, MarkerArray
 from hofa_mpc_ros.msg import TrajectoryPointWindow
+from hofa_mpc_ros.vehicle_params import resolve_inertia, describe_inertia
 
 
 def wrap(angle):
@@ -119,10 +120,12 @@ class PlanarPIDTracker:
                             vehicle.get("drag_linear", [54.0, 10.0, 1.4])]
         self.drag_quadratic = [float(v) for v in
                                vehicle.get("drag_quadratic", [2.0, 15.0, 0.35])]
-        mass_matrix = vehicle.get("mass_matrix",
-                                  [7.94, 0.0, 0.0, 0.0, 7.94, 0.0, 0.0, 0.0, 0.15])
-        self.mass = [float(mass_matrix[0]), float(mass_matrix[4]),
-                     float(mass_matrix[8])]
+        # Effective inertia (rigid body + added mass) -- the feedforward has to
+        # supply the force that actually accelerates the vehicle in water.
+        mass_matrix, inertia_info = resolve_inertia(vehicle)
+        self.mass = [float(mass_matrix[0, 0]), float(mass_matrix[1, 1]),
+                     float(mass_matrix[2, 2])]
+        rospy.loginfo(describe_inertia(inertia_info))
         self.feedforward_enabled = bool(
             rospy.get_param("~feedforward_enabled", True))
         self.vehicle_name = rospy.get_param("~vehicle_name", "bricsbot")
