@@ -14,7 +14,7 @@
     <base_link name="base_link" type="compound" physics="submerged">
       <external_part name="BricsBotHull" type="model" physics="submerged" buoyant="false">
         <physical>
-          <mesh filename="bricsbot/bricsbot_collision_candidate.obj" scale="1.0"/>
+          <mesh filename="bricsbot/bricsbot_stonefish_physical_proxy_5000.obj" scale="1.0"/>
           <origin xyz="0 0 0" rpy="-1.5707963267948966 0 0"/>
           <thickness value="0.004"/>
         </physical>
@@ -119,8 +119,8 @@
       <ros_publisher topic="/$(arg vehicle_name)/pressure"/>
     </sensor>
 
-    <!-- Forward-looking camera.  The hull's front face sits at body x=+0.1914
-         (bounding box of bricsbot_collision_candidate.obj), so mount just
+    <!-- Forward-looking camera.  The hull's front face sits at body x=+0.1909
+         (bounding box of bricsbot_stonefish_physical_proxy.obj), so mount just
          ahead of it to avoid rendering the inside of the shell.  y=0 keeps
          T1/T2 (at y=+-0.128) out of frame; z=-0.03 is 3 cm above the body
          origin, since NED z points down.

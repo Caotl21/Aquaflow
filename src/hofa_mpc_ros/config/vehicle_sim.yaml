@@ -14,7 +14,7 @@ vehicle:
   # 4.29 L of solid inside a 34 L envelope, versus 7.775 L actually displaced.
   # The enclosing ellipsoid is therefore ~12x the displaced volume.  There is
   # no scenario-level override: <hydrodynamics> only exposes drag.
-  added_mass: [233.06, 286.06, 1.88]
+  added_mass: [235.09, 235.09, 1.88]
   coriolis_enabled: false
   # Linear and quadratic drag [x, y, yaw].
   # WARNING: only drag_linear[0] came from a steady-state sweep.  The sway and
