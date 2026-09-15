@@ -14,7 +14,7 @@
     <base_link name="base_link" type="compound" physics="submerged">
       <external_part name="BricsBotHull" type="model" physics="submerged" buoyant="false">
         <physical>
-          <mesh filename="bricsbot/bricsbot_stonefish_physical_proxy_5000.obj" scale="1.0"/>
+          <mesh filename="bricsbot/bricsbot_stonefish_physical_proxy_2000.obj" scale="1.0"/>
           <origin xyz="0 0 0" rpy="-1.5707963267948966 0 0"/>
           <thickness value="0.004"/>
         </physical>
