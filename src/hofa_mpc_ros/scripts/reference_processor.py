@@ -24,6 +24,7 @@ from nav_msgs.msg import Odometry, Path
 from std_msgs.msg import Header, Float64
 from hofa_mpc_ros.msg import TrajectoryPoint, TrajectoryPointWindow
 from hofa_mpc_ros.arc_profile import build_arc_profile
+from hofa_mpc_ros.experiment_gate import ExperimentGate
 
 
 def _wrap(angle):
@@ -105,6 +106,8 @@ class ReferenceProcessor:
         self._raw_z = None
         self._raw_yaw = None
 
+        self.experiment_gate = ExperimentGate("reference")
+
         # --- Subscribers ---
         rospy.Subscriber(ref_topic, Path, self._path_cb, queue_size=1)
         odom_topic = "/%s/odometry" % self.vehicle_name
@@ -150,6 +153,10 @@ class ReferenceProcessor:
         if len(msg.poses) < 2:
             return
 
+        if self.experiment_gate.topic and self.experiment_gate.start_at is not None:
+            self.path_stamp = msg.header.stamp
+            return  # freeze the accepted route/profile for this experiment
+
         n = len(msg.poses)
         x = np.zeros(n)
         y = np.zeros(n)
@@ -173,7 +180,7 @@ class ReferenceProcessor:
             # demand 0.2 m/s at s=0 while the vehicle sat still there: the
             # schedule was born ~0.83 s / 0.17 m ahead of anything reachable,
             # and the controller spent the whole run chasing that offset.
-            self.route_initial_speed = float(self.robot_speed or 0.0)
+            self.route_initial_speed = 0.0 if self.experiment_gate.topic else float(self.robot_speed or 0.0)
             self.s_progress = 0.0
             # A replanned route starts where the vehicle is now, so its
             # schedule starts now too; any lag against the old route is not
@@ -269,6 +276,12 @@ class ReferenceProcessor:
         projection, which is the legacy behaviour: the reference follows the
         vehicle, so the along-track error it reports is always zero.
         """
+        if self.experiment_gate.topic:
+            if not self.experiment_gate.allows(now.to_sec()):
+                self._publish_schedule_lag(0.0)
+                return 0.0
+            self.schedule_t0 = rospy.Time.from_sec(self.experiment_gate.start_at)
+
         if self.progress_mode == "projection":
             self.s_schedule = s_proj
             self._publish_schedule_lag(0.0)
@@ -284,7 +297,7 @@ class ReferenceProcessor:
         # Clamp the lead, and roll the schedule clock back to match.  Without
         # the rollback the clock would keep accruing an invisible debt and the
         # reference would jump forward the moment the vehicle caught up.
-        if s_sched > s_proj + self.max_schedule_lead:
+        if not self.experiment_gate.topic and s_sched > s_proj + self.max_schedule_lead:
             s_sched = min(s_proj + self.max_schedule_lead, s_arr[-1])
             self.schedule_t0 = now - rospy.Duration(
                 float(np.interp(s_sched, s_arr, t_arr)))

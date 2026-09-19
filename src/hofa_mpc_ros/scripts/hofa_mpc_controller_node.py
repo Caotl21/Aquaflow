@@ -27,6 +27,7 @@ from hofa_mpc_ros.allocator import ThrusterAllocator
 from hofa_mpc_ros.types import ThrusterConfig
 from hofa_mpc_ros.safety import SafetySupervisor, SafetyParams
 from hofa_mpc_ros.vehicle_params import resolve_inertia, describe_inertia
+from hofa_mpc_ros.experiment_gate import ExperimentGate
 
 
 class HofaMPCControllerNode:
@@ -99,6 +100,8 @@ class HofaMPCControllerNode:
             "/aquaflow/tracking_error/yaw_rad", Float64, queue_size=10)
         self.error_norm_pub = rospy.Publisher(
             "/aquaflow/tracking_error/xy_norm_m", Float64, queue_size=10)
+
+        self.experiment_gate = ExperimentGate("controller", depth_hold=True)
 
         # --- Control timer ---
         rate = self.mpc_params.control_rate_hz
@@ -309,6 +312,14 @@ class HofaMPCControllerNode:
         now = rospy.Time.now().to_sec()
         t_start = time.time()
 
+        if (not self.experiment_gate.allows(now) or
+                (self.experiment_gate.topic and self.experiment_gate.start_at is not None
+                 and self.ref_time < self.experiment_gate.start_at)):
+            self.controller_state = ControllerState.DISABLED
+            self._publish_zero_wrench()
+            self._publish_status(0, 0, 0, t_start)
+            return
+
         # Check safety
         self.controller_state = self.safety.check_state(
             self.state, now, self.ref_time if self.ref else None)
@@ -452,7 +463,7 @@ class HofaMPCControllerNode:
         msg.wrench.force.x = float(wrench_ned[0])
         msg.wrench.force.y = float(wrench_ned[1])
         msg.wrench.torque.z = float(wrench_ned[2])
-        msg.wrench.force.z = 0.0  # depth handled separately
+        msg.wrench.force.z = self.experiment_gate.depth_force() if self.enabled else 0.0
         self.wrench_pub.publish(msg)
 
     def _publish_zero_wrench(self):

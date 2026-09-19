@@ -21,6 +21,7 @@ from std_msgs.msg import Float64
 from visualization_msgs.msg import Marker, MarkerArray
 from hofa_mpc_ros.msg import TrajectoryPointWindow
 from hofa_mpc_ros.vehicle_params import resolve_inertia, describe_inertia
+from hofa_mpc_ros.experiment_gate import ExperimentGate
 
 
 def wrap(angle):
@@ -152,6 +153,7 @@ class PlanarPIDTracker:
                          self.velocity_cb, queue_size=1)
         rospy.Subscriber(self.trajectory_window_topic, TrajectoryPointWindow,
                          self.window_cb, queue_size=1)
+        self.experiment_gate = ExperimentGate("controller", depth_hold=True)
         self.timer = rospy.Timer(rospy.Duration(1.0 / float(rospy.get_param("~rate", 20.0))), self.update)
         rospy.on_shutdown(self.shutdown)
         rospy.loginfo(
@@ -426,6 +428,16 @@ class PlanarPIDTracker:
 
     def update(self, _event):
         now = rospy.Time.now()
+        if (not self.experiment_gate.allows(now.to_sec()) or
+                (self.experiment_gate.topic and self.experiment_gate.start_at is not None
+                 and (self.window is None or self.window.header.stamp.to_sec() < self.experiment_gate.start_at))):
+            self.reset_integrators()
+            msg = WrenchStamped()
+            msg.header.stamp = now
+            msg.header.frame_id = "base_link"
+            msg.wrench.force.z = self.experiment_gate.depth_force()
+            self.pub.publish(msg)
+            return
         if self.odom is None:
             self.reset_integrators()
             self.publish_zero(now)

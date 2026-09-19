@@ -6,6 +6,8 @@
   <arg name="controller" default="hofa_mpc" doc="hofa_mpc or pid"/>
   <arg name="scene" default="random_pillars"/>
   <arg name="enable" default="true"/>
+  <arg name="experiment_start_topic" default=""/>
+  <arg name="experiment_depth" default="1.0"/>
   <arg name="headless" default="false"
        doc="Run Stonefish in console/no-GPU mode"/>
   <arg name="platform" default="sim"
@@ -46,6 +48,7 @@
     <rosparam command="load" file="$(find hofa_mpc_ros)/config/reference_processor.yaml" />
     <!-- After the rosparam load so it overrides the file value. -->
     <param name="progress_mode" value="$(arg progress_mode)"/>
+    <param name="experiment_start_topic" value="$(arg experiment_start_topic)"/>
     <param name="vehicle_name" value="$(arg vehicle_name)"/>
   </node>
 
@@ -61,12 +64,16 @@
       <param name="odom_topic" value="/$(arg vehicle_name)/odometry"/>
       <param name="wrench_topic" value="/controller/generalized_force"/>
       <param name="enabled" value="$(arg enable)"/>
+      <param name="experiment_start_topic" value="$(arg experiment_start_topic)"/>
+      <param name="experiment_depth" value="$(arg experiment_depth)"/>
     </node>
   </group>
 
   <group if="$(eval controller == 'pid')">
     <node pkg="aquaflow_stonefish" type="planar_pid_tracker.py"
           name="planar_pid_tracker" output="screen">
+      <param name="experiment_start_topic" value="$(arg experiment_start_topic)"/>
+      <param name="experiment_depth" value="$(arg experiment_depth)"/>
       <!-- Same nominal plant the MPC uses, for the inner-loop feedforward. -->
       <rosparam command="load" file="$(find hofa_mpc_ros)/config/vehicle_$(arg platform).yaml" />
       <param name="vehicle_name" value="$(arg vehicle_name)"/>

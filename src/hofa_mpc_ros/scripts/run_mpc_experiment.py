@@ -6,7 +6,7 @@ goal, records the important ROS topics, computes geometry/time/speed/control
 metrics, and writes every artifact below one timestamped directory.
 
 Example:
-    rosrun hofa_mpc_ros run_mpc_experiment.py --scene empty_pool
+    rosrun hofa_mpc_ros run_mpc_experiment.py --scene random_pillars
 
 Use ``--no-launch`` when the simulation is already running.  ROS and the
 workspace must be sourced before invoking the script.
@@ -41,7 +41,7 @@ import rosgraph
 import rospkg
 from geometry_msgs.msg import AccelStamped, PoseStamped, WrenchStamped
 from nav_msgs.msg import Odometry, Path
-from std_msgs.msg import Float64MultiArray
+from std_msgs.msg import Float64MultiArray, Time as StartTime
 from hofa_mpc_ros.msg import ControllerStatus, TrajectoryPointWindow
 from hofa_mpc_ros.arc_profile import build_arc_profile
 
@@ -120,16 +120,11 @@ def project_to_path(x, y, model):
 def build_evaluation_model(path, profile_params, t0):
     """Absolute plan for the route, from the same profiler the controller uses.
 
-    The reference window the controller receives is re-anchored to the
-    vehicle's own projection every cycle, so scoring against it measures
-    nothing in the time dimension -- planned duration comes out exactly equal
-    to the run's duration and the along-track error is identically zero.
-    Recomputing the profile here from the route geometry gives an absolute
-    schedule that the vehicle can be genuinely early or late against.
+    Rebuild the frozen route's profile with the same limits and start epoch
+    used online. Scoring remains independent of measured vehicle progress.
 
-    ``t0`` is the wall stamp at which the schedule starts (first odometry
-    sample of the scored window), so ``times`` are directly comparable to
-    odometry stamps.
+    ``t0`` is the shared ROS experiment start stamp. Legacy runs without
+    start metadata retain their historical first-odometry origin.
     """
     points = path["points"]
     if len(points) < 2:
@@ -217,6 +212,8 @@ def capture_runtime_config(args):
         "src/hofa_mpc_ros/constraints.py",
         "src/hofa_mpc_ros/hofa.py",
         "src/hofa_mpc_ros/model.py",
+        "src/hofa_mpc_ros/experiment_gate.py",
+        "launch/simulation.launch",
         "config/mpc.yaml",
         "config/reference_processor.yaml",
         "config/vehicle_sim.yaml",
@@ -234,6 +231,9 @@ def capture_runtime_config(args):
         "/hofa_mpc_controller/vehicle",
         "/hofa_mpc_controller/thrusters",
         "/hofa_mpc_controller/safety",
+        "/hofa_mpc_controller/experiment_start_topic",
+        "/hofa_mpc_controller/experiment_depth",
+        "/planar_pid_tracker/experiment_start_topic",
         "/reference_processor",
         "/thrusters",
         "/vehicle",
@@ -267,7 +267,7 @@ def write_runtime_config(output_dir, args):
     return filename
 
 
-def goal_reached_index(odom, goal_xy):
+def goal_reached_index(odom, goal_xy, start_stamp=None):
     """First odometry index satisfying the goal test, or None.
 
     Same predicate the live recorder applies, so a rescored run cannot
@@ -275,7 +275,7 @@ def goal_reached_index(odom, goal_xy):
     """
     if not odom:
         return None
-    t0 = odom[0]["stamp"]
+    t0 = odom[0]["stamp"] if start_stamp is None else start_stamp
     for index, row in enumerate(odom):
         if (math.hypot(row["x"] - goal_xy[0], row["y"] - goal_xy[1]) < GOAL_RADIUS_M
                 and row["speed_world"] < GOAL_SPEED_MPS
@@ -308,7 +308,7 @@ def compute_metrics(odom, model, status, pwm, goal_xy, finish_reason):
     progress_err, schedule_lag = [], []
     turn_yaw_err, turn_yaw_rate_err = [], []
     actual_arc = []
-    t0 = odom[0]["stamp"]
+    t0 = float(model["times"][0])
 
     for row in odom:
         t_rel = row["stamp"] - t0
@@ -411,6 +411,7 @@ class ExperimentRecorder(object):
         self.timeout_s = float(timeout_s)
         self.lock = threading.RLock()
         self.start_wall = time.time()
+        self.start_stamp = None
         self.first_odom_stamp = None
         self.last_odom_stamp = None
         self.done = False
@@ -447,20 +448,6 @@ class ExperimentRecorder(object):
         """Discard any route published before this run's goal was sent."""
         with self.lock:
             self.initial_path = None
-
-    def reset_measurements(self):
-        """Start scoring from the first odometry sample after the goal."""
-        with self.lock:
-            self.first_odom_stamp = None
-            self.last_odom_stamp = None
-            self.done = False
-            self.finish_reason = "timeout"
-            self.odom = []
-            self.status = []
-            self.wrench = []
-            self.virtual_accel = []
-            self.pwm = []
-            self.window = []
 
     @staticmethod
     def _stamp(msg):
@@ -526,7 +513,7 @@ class ExperimentRecorder(object):
             "y": float(msg.pose.pose.position.y),
             "z": float(msg.pose.pose.position.z),
             "yaw": yaw,
-            "u": u, "v": v,
+            "u": u, "v": v, "w": float(msg.twist.twist.linear.z),
             "vx_world": vx, "vy_world": vy,
             "speed_world": math.hypot(vx, vy),
             "r": float(msg.twist.twist.angular.z),
@@ -535,12 +522,12 @@ class ExperimentRecorder(object):
             if self.first_odom_stamp is None:
                 self.first_odom_stamp = stamp
             self.last_odom_stamp = stamp
-            row["t_rel"] = stamp - self.first_odom_stamp
+            row["t_rel"] = stamp - (self.start_stamp if self.start_stamp is not None else self.first_odom_stamp)
             self.odom.append(row)
             if (math.hypot(row["x"] - self.goal_xy[0],
                            row["y"] - self.goal_xy[1]) < 0.25 and
                     row["speed_world"] < 0.08 and
-                    row["t_rel"] > 2.0):
+                    self.start_stamp is not None and row["t_rel"] > 2.0):
                 self.done = True
                 self.finish_reason = "goal_reached"
 
@@ -565,6 +552,7 @@ class ExperimentRecorder(object):
                 "stamp": self._stamp(msg),
                 "fx": float(msg.wrench.force.x),
                 "fy": float(msg.wrench.force.y),
+                "fz": float(msg.wrench.force.z),
                 "nz": float(msg.wrench.torque.z),
             })
 
@@ -589,20 +577,20 @@ class ExperimentRecorder(object):
         if not path or not odom:
             return None
         return build_evaluation_model(path, self.profile_params,
-                                      odom[0]["stamp"])
+                                      self.start_stamp if self.start_stamp is not None else odom[0]["stamp"])
 
     def snapshot(self):
         with self.lock:
-            return {
-                "odom": list(self.odom),
-                "status": list(self.status),
-                "wrench": list(self.wrench),
-                "pwm": list(self.pwm),
-                "window": list(self.window),
-                "virtual_accel": list(self.virtual_accel),
-                "path": self.initial_path or self.global_path,
-                "finish_reason": self.finish_reason,
-            }
+            data = {key: list(getattr(self, key)) for key in
+                    ("odom", "status", "wrench", "pwm", "window", "virtual_accel")}
+            if self.start_stamp is not None:
+                data = {k: [r for r in rows if r["stamp"] >= self.start_stamp]
+                        for k, rows in data.items()}
+                for row in data["odom"]:
+                    row["t_rel"] = row["stamp"] - self.start_stamp
+            data.update(path=self.initial_path or self.global_path,
+                        finish_reason=self.finish_reason)
+            return data
 
     def metrics(self):
         data = self.snapshot()
@@ -614,6 +602,12 @@ class ExperimentRecorder(object):
                                data["finish_reason"])
 
     def save(self, output_dir):
+        with self.lock:
+            if self.start_stamp is not None:
+                write_csv(os.path.join(output_dir, "prestart_odometry.csv"),
+                          [r for r in self.odom if r["stamp"] < self.start_stamp])
+                write_csv(os.path.join(output_dir, "prestart_wrench.csv"),
+                          [r for r in self.wrench if r["stamp"] < self.start_stamp])
         data = self.snapshot()
         model = self.evaluation_model(data["path"], data["odom"])
         return write_artifacts(output_dir, data, model, self.goal_xy)
@@ -668,7 +662,7 @@ def write_artifacts(output_dir, data, model, goal_xy):
     write_csv(os.path.join(output_dir, "mpc_reference_window.csv"),
               data["window"])
 
-    t0 = odom[0]["stamp"]
+    t0 = float(model["times"][0])
     evaluation_rows = []
     for row in odom:
         t_rel = row["stamp"] - t0
@@ -711,7 +705,7 @@ def render_plots(output_dir, data, model, goal_xy):
     if not odom or model is None:
         return
     wrench, virtual_accel = data["wrench"], data["virtual_accel"]
-    t0 = odom[0]["stamp"]
+    t0 = float(model["times"][0])
     t = np.asarray([row["stamp"] - t0 for row in odom])
     x = np.asarray([row["x"] for row in odom])
     y = np.asarray([row["y"] for row in odom])
@@ -862,7 +856,12 @@ def load_run(run_dir):
 
     # Re-derive rather than trust the old metrics.json: the point of rescoring
     # is that the previous verdict may have been wrong.
-    reached = goal_reached_index(odom, goal_xy)
+    start_stamp = None
+    start_file = os.path.join(run_dir, "experiment_start.json")
+    if os.path.isfile(start_file):
+        with open(start_file) as stream:
+            start_stamp = json.load(stream)["start_stamp"]
+    reached = goal_reached_index(odom, goal_xy, start_stamp)
     data = {
         "odom": odom,
         "status": status,
@@ -879,12 +878,100 @@ def load_run(run_dir):
 def rescore(run_dir):
     """Recompute metrics and plots for an existing run directory in place."""
     data, goal_xy, profile_params = load_run(run_dir)
-    model = build_evaluation_model(data["path"], profile_params,
-                                   data["odom"][0]["stamp"])
+    start_file = os.path.join(run_dir, "experiment_start.json")
+    start_stamp = data["odom"][0]["stamp"]
+    if os.path.isfile(start_file):
+        with open(start_file) as stream:
+            start_stamp = json.load(stream)["start_stamp"]
+    model = build_evaluation_model(data["path"], profile_params, start_stamp)
     metrics = write_artifacts(run_dir, data, model, goal_xy)
     print(json.dumps(metrics, indent=2, sort_keys=True))
     print("Rescored: %s" % run_dir)
     return metrics
+
+
+class ExperimentBarrier:
+    """Wait on fresh data and a calm vehicle, then negotiate a shared epoch."""
+    def __init__(self, recorder, topic, controller, depth, timeout):
+        self.recorder, self.topic = recorder, topic
+        self.controller = "/hofa_mpc_controller" if controller == "hofa_mpc" else "/planar_pid_tracker"
+        self.depth, self.timeout = depth, timeout
+        self.acks = {}
+        self.pub = rospy.Publisher(topic, StartTime, queue_size=1, latch=True)
+        self.subs = [rospy.Subscriber(topic + '/' + role + '_ack', StartTime,
+                     lambda msg, role=role: self.acks.update({role: msg.data.to_sec()}),
+                     queue_size=1) for role in ('reference', 'controller')]
+
+    def wait_ready(self, require_path, goal_stamp=0.):
+        deadline = time.monotonic() + self.timeout
+        stable_since = None
+        while not rospy.is_shutdown():
+            now = rospy.Time.now().to_sec()
+            with self.recorder.lock:
+                row = self.recorder.odom[-1] if self.recorder.odom else None
+                path = self.recorder.global_path
+                window = self.recorder.window[-1] if self.recorder.window else None
+                wrench = self.recorder.wrench[-1] if self.recorder.wrench else None
+                pwm = self.recorder.pwm[-1] if self.recorder.pwm else None
+            configured = all(rospy.get_param(node + '/experiment_start_topic', '') == self.topic
+                             for node in (self.controller, '/reference_processor'))
+            ready = (configured and self.pub.get_num_connections() >= 2 and
+                     row is not None and 0 <= now-row['stamp'] < .25 and
+                     row['speed_world'] < .01 and abs(row['r']) < .02 and abs(row['w']) < .02 and
+                     abs(row['z']-self.depth) < .05 and
+                     wrench is not None and 0 <= now-wrench['stamp'] < .3 and
+                     all(abs(wrench[k]) < 1e-9 for k in ('fx', 'fy', 'nz')) and
+                     pwm is not None and 0 <= now-pwm['stamp'] < .3 and
+                     len(pwm['pwm']) >= 6 and all(abs(v) < 1e-9 for v in pwm['pwm'][:4]))
+            if require_path:
+                ready = (ready and path is not None and path['stamp'] >= goal_stamp and
+                         math.hypot(path['points'][-1][1]-self.recorder.goal_xy[0],
+                                    path['points'][-1][2]-self.recorder.goal_xy[1]) < .35 and
+                         window is not None and window['stamp'] >= goal_stamp and
+                         0 <= now-window['stamp'] < .3 and
+                         rospy.get_param('/reference_processor/progress_mode', 'schedule') == 'schedule')
+            if ready:
+                if stable_since is None:
+                    stable_since = now
+                if now-stable_since >= 1.:
+                    if require_path:
+                        with self.recorder.lock:
+                            self.recorder.initial_path = path
+                    return
+            else:
+                stable_since = None
+            if time.monotonic() > deadline:
+                raise RuntimeError("Experiment not ready: require fresh odometry/reference, "
+                                   "armed controller, allocator, depth within 5 cm and horizontal rest")
+            time.sleep(.05)
+        raise RuntimeError("ROS shut down before experiment readiness")
+
+    def start(self, output_dir):
+        start_time = rospy.Time.now() + rospy.Duration(1.0)
+        start_stamp = start_time.to_sec()
+        self.acks.clear()
+        # Arm recorder before any node can move. Never clear captured samples.
+        self.recorder.start_stamp = start_stamp
+        self.recorder.done = False
+        self.pub.publish(StartTime(data=start_time))
+        deadline = time.monotonic() + 2.0
+        while not all(self.acks.get(role) == start_stamp for role in ('reference', 'controller')):
+            if rospy.is_shutdown() or rospy.Time.now().to_sec() >= start_stamp-.2 or time.monotonic() > deadline:
+                self.stop()
+                raise RuntimeError("Start acknowledgement missing; experiment cancelled")
+            time.sleep(.01)
+        with open(os.path.join(output_dir, 'experiment_start.json'), 'w') as stream:
+            json.dump(dict(start_stamp=start_stamp, topic=self.topic, acks=self.acks,
+                           depth_target_m=self.depth, protocol='acknowledged_future_ros_time'), stream, indent=2)
+        rospy.loginfo("Experiment armed: shared start %.9f", start_stamp)
+
+    def stop(self):
+        try:
+            self.pub.publish(StartTime(data=rospy.Time()))
+            time.sleep(.1)
+        except rospy.ROSException:
+            pass  # process cleanup must still run after ROS shutdown
+
 
 
 def publish_goal(goal_xy, depth=1.0):
@@ -896,11 +983,14 @@ def publish_goal(goal_xy, depth=1.0):
     msg.pose.position.y = float(goal_xy[1])
     msg.pose.position.z = float(depth)
     msg.pose.orientation.w = 1.0
-    # Publish repeatedly so the teacher cannot miss the goal during startup.
-    for _ in range(10):
-        msg.header.stamp = rospy.Time.now()
-        pub.publish(msg)
-        rospy.sleep(0.2)
+    deadline = time.monotonic() + 10.
+    while pub.get_num_connections() == 0:
+        if rospy.is_shutdown() or time.monotonic() > deadline:
+            raise RuntimeError("Goal subscriber not ready")
+        time.sleep(.02)
+    msg.header.stamp = rospy.Time.now()
+    pub.publish(msg)
+    return pub, msg.header.stamp.to_sec()
 
 
 def terminate_process(process, name):
@@ -928,12 +1018,16 @@ def main():
     parser.add_argument("--controller", choices=("hofa_mpc", "pid"),
                         default="hofa_mpc",
                         help="backend controller launched by simulation.launch")
-    parser.add_argument("--scene", default="empty_pool")
+    parser.add_argument("--scene", default="random_pillars")
     parser.add_argument("--goal-x", type=float, default=4.0)
     parser.add_argument("--goal-y", type=float, default=0.0)
     parser.add_argument("--goal-depth", type=float, default=1.0)
     parser.add_argument("--timeout", type=float, default=120.0)
-    parser.add_argument("--startup-wait", type=float, default=5.0)
+    parser.add_argument("--startup-wait", type=float, default=5.0,
+                        help="deprecated; startup is now readiness-driven")
+    parser.add_argument("--ready-timeout", type=float, default=120.0)
+    parser.add_argument("--experiment-start-topic", default=None,
+                        help="for --no-launch: topic configured on BOTH gated nodes")
     parser.add_argument("--no-launch", action="store_true")
     parser.add_argument("--no-bag", action="store_true")
     parser.add_argument("--headless", action="store_true",
@@ -956,6 +1050,7 @@ def main():
     launch_proc = None
     bag_proc = None
     roscore_proc = None
+    barrier = None
     try:
         if not rosgraph.is_master_online():
             roscore_proc = subprocess.Popen(["roscore"], start_new_session=True)
@@ -967,20 +1062,28 @@ def main():
 
         rospy.init_node("mpc_experiment_runner", anonymous=True)
         recorder = ExperimentRecorder(goal_xy, args.timeout)
+        if args.no_launch and not args.experiment_start_topic:
+            raise RuntimeError("--no-launch requires --experiment-start-topic and pre-armed nodes")
+        start_topic = args.experiment_start_topic or ("/experiment/" + os.path.basename(output_dir) + "/start")
+        barrier = ExperimentBarrier(recorder, start_topic, args.controller,
+                                    args.goal_depth, args.ready_timeout)
 
         if not args.no_launch:
             launch_cmd = ["roslaunch", args.launch_pkg, args.launch_file,
                           "controller:=" + args.controller,
                           "vehicle_name:=bricsbot",
                           "vehicle_model:=bricsbot", "scene:=" + args.scene,
-                          "enable:=true"]
+                          "enable:=true", "progress_mode:=schedule",
+                          "experiment_start_topic:=" + start_topic,
+                          "experiment_depth:=" + str(args.goal_depth)]
             if args.headless:
                 launch_cmd.append("headless:=true")
             launch_proc = subprocess.Popen(launch_cmd, start_new_session=True)
 
         if not args.no_bag:
             bag_file = os.path.join(output_dir, "topics.bag")
-            bag_topics = ["/clock", "/bricsbot/odometry",
+            bag_topics = [start_topic, start_topic+"/reference_ack", start_topic+"/controller_ack",
+                          "/clock", "/bricsbot/odometry",
                           "/aquaflow/teacher_global_path",
                           "/controller/reference_path",
                           "/controller/reference_velocity",
@@ -998,13 +1101,13 @@ def main():
                 print("warning: rosbag not found; continuing without bag",
                       file=sys.stderr)
 
-        rospy.sleep(args.startup_wait)
-        write_runtime_config(output_dir, args)
-        # The teacher can publish its default/nominal route during startup.
-        # Score only the route generated after this run's explicit goal.
+        barrier.wait_ready(require_path=False)
+        recorder.profile_params = rospy.get_param("/reference_processor", {})
         recorder.reset_reference_model()
-        publish_goal(goal_xy, args.goal_depth)
-        recorder.reset_measurements()
+        goal_pub, goal_stamp = publish_goal(goal_xy, args.goal_depth)
+        barrier.wait_ready(require_path=True, goal_stamp=goal_stamp)
+        write_runtime_config(output_dir, args)
+        barrier.start(output_dir)
         start = time.time()
         while not rospy.is_shutdown() and time.time() - start < args.timeout:
             if recorder.done:
@@ -1018,6 +1121,8 @@ def main():
         print(json.dumps(metrics, indent=2, sort_keys=True))
         print("Artifacts: %s" % output_dir)
     finally:
+        if barrier is not None:
+            barrier.stop()
         terminate_process(bag_proc, "rosbag")
         terminate_process(launch_proc, "roslaunch")
         terminate_process(roscore_proc, "roscore")
