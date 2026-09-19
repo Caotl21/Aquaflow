@@ -1,27 +1,20 @@
 # BricsBot dynamics as seen in STONEFISH.  See vehicle_real.yaml for the
 # physical robot; do not copy numbers between the two files.
 vehicle:
-  # Rigid-body inertia [m_x, m_y, I_z].  From the scenario masses
-  # (0.50 hull + 7.44 ballast + 0.01 buoyancy = 7.95 kg); identical on the
-  # real vehicle.
-  dry_mass: [7.94, 7.94, 0.15]
-  # Hydrodynamic added mass, identified from run_20260911_174150 by a
-  # three-parameter fit (n=4131, residual 1.29 N vs 6.90 N with dry mass
-  # alone).  These are ~20x larger than a real vehicle of this displacement
-  # would show: Stonefish derives added mass from a minimum-volume ellipsoid
-  # enclosing the collision mesh (Polyhedron defaults to GeometryApproxType::
-  # AUTO -> ComputeEllipsoidalApprox), and that mesh is an open frame -- only
-  # 4.29 L of solid inside a 34 L envelope, versus 7.775 L actually displaced.
-  # The enclosing ellipsoid is therefore ~12x the displaced volume.  There is
-  # no scenario-level override: <hydrodynamics> only exposes drag.
-  added_mass: [235.09, 235.09, 1.88]
+  # Rigid-body inertia [m_x, m_y, I_z] for the current Stonefish scenario:
+  # 0.50 kg hull + 7.44 kg ballast + 0.01 kg buoyancy = 7.95 kg.
+  # Dry yaw inertia is a thin-shell/box geometric estimate, not a measurement.
+  dry_mass: [7.95, 7.95, 0.174887]
+  # Hull MVAE converged after 21 iterations with the pre-refined, normal-free
+  # mesh. The compound averages the hull translational added masses
+  # (5.734912, 19.295300, 53.731838) to 26.254017 kg.
+  # Yaw is an effective 3-DOF identification: 0.24254 - 0.174887 kg.m^2.
+  added_mass: [26.254017, 26.254017, 0.067653]
   coriolis_enabled: false
-  # Linear and quadratic drag [x, y, yaw].
-  # WARNING: only drag_linear[0] came from a steady-state sweep.  The sway and
-  # yaw values were fitted on transient data against the wrong mass and are
-  # not trustworthy -- re-run fit_drag_coefficients.py in two stages.
-  drag_linear: [54.0, 64.0, 1.4]
-  drag_quadratic: [2.0, 15.0, 0.35]
+  # Steady-state force/torque sweeps and held-out transient validation:
+  # results/identification/{surge,sway,yaw}_mvae50_*/validation_report.md
+  drag_linear: [35.488892, 35.656137, 1.163915]
+  drag_quadratic: [17.853671, 17.584671, 0.021297]
 
 # Horizontal thrusters T1-T4 (matching hand-drawn diagram and actual hardware)
 thrusters:
