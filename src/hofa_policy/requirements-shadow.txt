@@ -1,0 +1,4 @@
+rospkg>=1.6
+catkin_pkg>=1.0
+netifaces>=0.11
+torch>=2.7

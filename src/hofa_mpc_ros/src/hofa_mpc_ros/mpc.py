@@ -242,17 +242,15 @@ class HofaMPC:
 
         var_bounds = list(zip(lb_bounds, ub_bounds))
 
-        # Cost function
+        # Return cost and gradient together so SciPy reuses the same rollout
+        # and adjoint pass for both at each decision vector.
         def cost_fn(w_flat):
-            return self._cost_and_grad(w_flat, z0, ref_affine)[0]
-
-        def cost_grad(w_flat):
-            return self._cost_and_grad(w_flat, z0, ref_affine)[1]
+            return self._cost_and_grad(w_flat, z0, ref_affine)
 
         # Solve
         try:
             result = minimize(
-                cost_fn, w0, jac=cost_grad, method='L-BFGS-B',
+                cost_fn, w0, jac=True, method='L-BFGS-B',
                 bounds=var_bounds,
                 options={
                     'maxiter': self.params.max_iterations,

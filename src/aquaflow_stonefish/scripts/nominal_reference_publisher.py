@@ -35,6 +35,17 @@ def main():
         raise rospy.ROSInitException("unsupported trajectory_type: %s" % trajectory_type)
 
     pub = rospy.Publisher(topic, Path, queue_size=1, latch=True)
+    # Nominal intent follows the task goal, without reading the obstacle map.
+    goal = [x1, y, z]
+    def goal_cb(message):
+        if message.header.frame_id not in ("", frame):
+            rospy.logerr("Nominal goal frame mismatch: %s", message.header.frame_id)
+            return
+        p = message.pose.position
+        goal[:] = [p.x, p.y, p.z]
+    follow_goal = rospy.get_param("~follow_goal", False)
+    if follow_goal and trajectory_type == "line":
+        rospy.Subscriber("/move_base_simple/goal", PoseStamped, goal_cb, queue_size=1)
     msg = Path()
     msg.header.frame_id = frame
     q = quat_from_yaw(yaw)
@@ -61,6 +72,16 @@ def main():
         msg.poses.append(pose)
     rate = rospy.Rate(2.0)
     while not rospy.is_shutdown():
+        if follow_goal and trajectory_type == "line":
+            end = tuple(goal)
+            q = quat_from_yaw(math.atan2(end[1] - y, end[0] - x0))
+            for i, pose in enumerate(msg.poses):
+                u = float(i) / float(count - 1)
+                pose.pose.position.x = x0 + u * (end[0] - x0)
+                pose.pose.position.y = y + u * (end[1] - y)
+                pose.pose.position.z = end[2]
+                pose.pose.orientation.x, pose.pose.orientation.y = q[0], q[1]
+                pose.pose.orientation.z, pose.pose.orientation.w = q[2], q[3]
         msg.header.stamp = rospy.Time.now()
         for pose in msg.poses:
             pose.header.stamp = msg.header.stamp

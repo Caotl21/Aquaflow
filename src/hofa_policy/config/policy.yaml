@@ -1,0 +1,18 @@
+schema: hofa_policy_v1
+horizon: 20
+reference_dt_s: 0.1
+max_odom_age_s: 0.05
+max_reference_age_s: 0.15
+
+model:
+  point_hidden: 64
+  reference_hidden: 96
+  context_hidden: 64
+  fusion_hidden: 128
+
+training:
+  batch_size: 256
+  learning_rate: 0.0003
+  weight_decay: 0.0001
+  effort_weight: 0.01
+

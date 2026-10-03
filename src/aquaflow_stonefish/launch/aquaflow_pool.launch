@@ -3,6 +3,7 @@
   <!--
     Supported scenes:
       empty_pool       -> aquaflow_empty_pool.scn
+      empty_pool_control -> aquaflow_empty_pool_control.scn (camera-free)
       single_obstacle  -> aquaflow_single_obstacle.scn
       random_pillars   -> aquaflow_random_pillars.scn
       random_pillars + vehicle_model:=bluerov2 -> BlueROV2 variant
@@ -11,9 +12,9 @@
     scene name instead of silently selecting a fallback environment.
   -->
   <arg name="scene" default="empty_pool"
-       doc="AquaFlow course: empty_pool, single_obstacle or random_pillars"/>
+       doc="AquaFlow course: empty_pool, empty_pool_control, single_obstacle or random_pillars"/>
   <arg name="simulation_rate" default="100.0"/>
-  <arg name="vehicle_model" default="bluerov2"
+  <arg name="vehicle_model" default="bricsbot"
        doc="Robot to include in random_pillars: bluerov2 or bricsbot"/>
   <arg name="graphics_resolution" default="1200 800"/>
   <arg name="graphics_quality" default="medium"
@@ -21,14 +22,16 @@
   <arg name="headless" default="false"
        doc="Use Stonefish parsed_simulator_nogpu without an OpenGL window"/>
 
+  <arg name="scenario_path" default=""/>
+
   <arg name="scenario_file"
-       value="$(eval {'empty_pool': 'aquaflow_empty_pool.scn', 'single_obstacle': 'aquaflow_single_obstacle.scn', 'random_pillars': {'bluerov2': 'aquaflow_random_pillars_bluerov2.scn', 'bricsbot': 'aquaflow_random_pillars.scn'}[arg('vehicle_model')]}[arg('scene')])"/>
+       value="$(eval {'empty_pool': 'aquaflow_empty_pool.scn', 'empty_pool_control': 'aquaflow_empty_pool_control.scn', 'single_obstacle': 'aquaflow_single_obstacle.scn', 'random_pillars': {'bluerov2': 'aquaflow_random_pillars_bluerov2.scn', 'bricsbot': 'aquaflow_random_pillars.scn'}[arg('vehicle_model')]}[arg('scene')])"/>
 
   <include unless="$(arg headless)" file="$(find stonefish_ros)/launch/simulator.launch">
     <arg name="simulation_data"
          value="$(find aquaflow_stonefish)/data"/>
     <arg name="scenario_description"
-         value="$(find aquaflow_stonefish)/scenarios/$(arg scenario_file)"/>
+         value="$(eval arg('scenario_path') or find('aquaflow_stonefish') + '/scenarios/' + arg('scenario_file'))"/>
     <arg name="simulation_rate" value="$(arg simulation_rate)"/>
     <arg name="graphics_resolution" value="$(arg graphics_resolution)"/>
     <arg name="graphics_quality" value="$(arg graphics_quality)"/>
@@ -38,7 +41,7 @@
     <arg name="simulation_data"
          value="$(find aquaflow_stonefish)/data"/>
     <arg name="scenario_description"
-         value="$(find aquaflow_stonefish)/scenarios/$(arg scenario_file)"/>
+         value="$(eval arg('scenario_path') or find('aquaflow_stonefish') + '/scenarios/' + arg('scenario_file'))"/>
     <arg name="simulation_rate" value="$(arg simulation_rate)"/>
   </include>
 
@@ -47,7 +50,7 @@
        in TF.  Publish it here; the numbers mirror the <origin> of the
        camera_front sensor in bricsbot_reference.scn (static_transform_publisher
        takes x y z yaw pitch roll). -->
-  <node if="$(eval arg('vehicle_model') == 'bricsbot')"
+  <node if="$(eval arg('vehicle_model') == 'bricsbot' and arg('scene') != 'empty_pool_control')"
         pkg="tf2_ros" type="static_transform_publisher"
         name="bricsbot_camera_front_tf"
         args="0.20 0.0 -0.03 1.5707963268 0.0 1.5707963268 bricsbot/base_link bricsbot/camera_front"/>

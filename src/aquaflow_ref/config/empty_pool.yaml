@@ -1,0 +1,16 @@
+# BricsBot course; geometry matches the scenario of the same name.
+robot_radius: 0.365
+safety_margin: 0.20
+pool_x_min: -7.0
+pool_x_max: 7.0
+pool_y_min: -4.0
+pool_y_max: 4.0
+grid_resolution: 0.10
+corner_radius: 0.50
+local_spacing: 0.20
+horizon_points: 10
+max_speed: 0.20
+max_yaw_rate: 0.5
+goal_depth: 1.0
+global_goal: {x: 5.0, y: 0.0, z: 1.0}
+obstacles: []

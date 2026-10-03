@@ -3,6 +3,9 @@
   <arg name="map_file"
        default="$(find aquaflow_ref)/config/random_pillars.yaml"/>
   <arg name="vehicle_name" default="bricsbot"/>
+  <arg name="nominal_start_x" default="-5.0"/>
+  <arg name="nominal_start_y" default="0.0"/>
+  <arg name="nominal_depth" default="1.0"/>
   <arg name="trajectory_type" default="line"
        doc="Nominal trajectory: line or figure_eight"/>
   <rosparam command="load" file="$(arg map_file)" ns="/privileged_teacher"/>
@@ -11,6 +14,10 @@
   <node pkg="aquaflow_stonefish" type="nominal_reference_publisher.py"
         name="nominal_reference_publisher" output="screen">
     <param name="trajectory_type" value="$(arg trajectory_type)"/>
+    <param name="x_start" value="$(arg nominal_start_x)"/>
+    <param name="y" value="$(arg nominal_start_y)"/>
+    <param name="z" value="$(arg nominal_depth)"/>
+    <param name="follow_goal" value="true"/>
   </node>
   <node pkg="aquaflow_ref" type="privileged_teacher.py"
         name="privileged_teacher" output="screen">

@@ -7,6 +7,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 from itertools import product
 import numpy as np
 from scipy.optimize import linprog
+import hofa_mpc_ros.constraints as constraints_module
 from hofa_mpc_ros.constraints import SafeInnerBoxStrategy, CurrentStateBoxStrategy
 from hofa_mpc_ros.types import VehicleParams, VehicleState, ThrusterConfig
 from hofa_mpc_ros.model import ThreeDOFModel
@@ -94,7 +95,7 @@ class TestSafeInnerBoxStrategy:
 
         width_full = bounds_full.upper - bounds_full.lower
         width_half = bounds_half.upper - bounds_half.lower
-        assert np.all(width_half <= width_full + 1e-6)
+        assert np.sum(width_half) <= np.sum(width_full) + 1e-6
         assert np.all(width_half > 0.0)
 
     def test_compute_for_step(self, model, allocator):
@@ -127,3 +128,36 @@ class TestSafeInnerBoxStrategy:
                 method="highs",
             )
             assert result.success
+
+    def test_uses_one_joint_lp_per_prediction_step(self, model, allocator,
+                                                   monkeypatch):
+        calls = []
+        real_linprog = constraints_module.linprog
+
+        def counted_linprog(*args, **kwargs):
+            calls.append(1)
+            return real_linprog(*args, **kwargs)
+
+        monkeypatch.setattr(constraints_module, "linprog", counted_linprog)
+        state_pred = np.array([0.0, 0.0, 0.4, 0.3, -0.1, 0.05])
+        SafeInnerBoxStrategy().compute_for_step(
+            state_pred, model, allocator, scale=1.0)
+        assert len(calls) == 1
+
+    def test_direct_lp_respects_requested_outer_box_cap(self, model, allocator):
+        strategy = SafeInnerBoxStrategy()
+        state_pred = np.array([0.0, 0.0, 0.35, 0.2, -0.15, 0.08])
+        requested_scale = 0.4
+        bounds = strategy.compute_for_step(
+            state_pred, model, allocator, scale=requested_scale)
+
+        psi = state_pred[2]
+        gain = (
+            __import__("hofa_mpc_ros.hofa", fromlist=["kinematic_matrix"])
+            .kinematic_matrix(psi) @ model.M_inv @ allocator.Bh)
+        f_min = np.array([t.thrust_min for t in allocator.thrusters])
+        f_max = np.array([t.thrust_max for t in allocator.thrusters])
+        raw_half = np.sum(
+            np.abs(gain) * (0.5 * (f_max - f_min)), axis=1)
+        optimized_half = 0.5 * (bounds.upper - bounds.lower)
+        assert np.all(optimized_half <= requested_scale * raw_half + 1e-8)

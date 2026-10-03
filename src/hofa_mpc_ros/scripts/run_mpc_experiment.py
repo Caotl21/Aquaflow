@@ -17,10 +17,12 @@ import argparse
 import csv
 import hashlib
 import json
+import logging
 import math
 import os
 import platform
 import signal
+import shutil
 import subprocess
 import sys
 import threading
@@ -39,11 +41,21 @@ except ImportError:
 import rospy
 import rosgraph
 import rospkg
-from geometry_msgs.msg import AccelStamped, PoseStamped, WrenchStamped
+from rosgraph.roslogging import RospyLogger
+from geometry_msgs.msg import (AccelStamped, PoseStamped, Vector3Stamped,
+                               WrenchStamped)
 from nav_msgs.msg import Odometry, Path
+from sensor_msgs.msg import JointState
 from std_msgs.msg import Float64MultiArray, Time as StartTime
 from hofa_mpc_ros.msg import ControllerStatus, TrajectoryPointWindow
 from hofa_mpc_ros.arc_profile import build_arc_profile
+
+
+# ROS Noetic's logging caller lookup can loop indefinitely under Python 3.11.
+# The policy collection environment uses Python 3.11, so use the standard
+# logging implementation in this experiment-runner process.
+if sys.version_info >= (3, 11):
+    RospyLogger.findCaller = logging.Logger.findCaller
 
 
 # Fallback profile limits, used only when /reference_processor is unreachable
@@ -185,10 +197,10 @@ def _git_metadata(root):
     metadata = {"commit": None, "status": None}
     try:
         metadata["commit"] = subprocess.check_output(
-            ["git", "rev-parse", "HEAD"], cwd=root,
+            ["git", "-c", "safe.directory=" + root, "rev-parse", "HEAD"], cwd=root,
             stderr=subprocess.STDOUT).decode("utf-8").strip()
         metadata["status"] = subprocess.check_output(
-            ["git", "status", "--short"], cwd=root,
+            ["git", "-c", "safe.directory=" + root, "status", "--short"], cwd=root,
             stderr=subprocess.STDOUT).decode("utf-8").strip()
     except (OSError, subprocess.CalledProcessError):
         pass
@@ -233,8 +245,12 @@ def capture_runtime_config(args):
         "/hofa_mpc_controller/safety",
         "/hofa_mpc_controller/experiment_start_topic",
         "/hofa_mpc_controller/experiment_depth",
+        "/hofa_policy_controller",
+        "/hofa_policy_perturbation_relay",
         "/planar_pid_tracker/experiment_start_topic",
         "/reference_processor",
+        "/privileged_teacher",
+        "/nominal_reference_publisher",
         "/thrusters",
         "/vehicle",
     ]
@@ -406,7 +422,9 @@ def compute_metrics(odom, model, status, pwm, goal_xy, finish_reason):
 class ExperimentRecorder(object):
     """ROS topic recorder and offline metric calculator."""
 
-    def __init__(self, goal_xy, timeout_s):
+    def __init__(self, goal_xy, timeout_s,
+                 global_path_topic="/aquaflow/teacher_global_path",
+                 status_topic="/hofa_mpc_controller/status"):
         self.goal_xy = np.asarray(goal_xy, dtype=float)
         self.timeout_s = float(timeout_s)
         self.lock = threading.RLock()
@@ -428,14 +446,25 @@ class ExperimentRecorder(object):
         self.virtual_accel = []
         self.pwm = []
         self.window = []
+        self.shadow_wrench = []
+        self.shadow_error = []
+        self.shadow_forces = []
+        self.shadow_timing = []
+        self.free_shadow_wrench = []
+        self.free_shadow_error = []
+        self.free_shadow_forces = []
+        self.free_shadow_timing = []
+        self.policy_forces = []
+        self.policy_timing = []
+        self.dagger_teacher_wrench = []
 
         rospy.Subscriber("/bricsbot/odometry", Odometry,
                          self._odom_cb, queue_size=20)
-        rospy.Subscriber("/aquaflow/teacher_global_path", Path,
+        rospy.Subscriber(global_path_topic, Path,
                          self._path_cb, queue_size=2)
         rospy.Subscriber("/controller/reference_trajectory_window",
                          TrajectoryPointWindow, self._window_cb, queue_size=2)
-        rospy.Subscriber("/hofa_mpc_controller/status", ControllerStatus,
+        rospy.Subscriber(status_topic, ControllerStatus,
                          self._status_cb, queue_size=20)
         rospy.Subscriber("/controller/generalized_force", WrenchStamped,
                          self._wrench_cb, queue_size=20)
@@ -443,6 +472,33 @@ class ExperimentRecorder(object):
                          self._virtual_accel_cb, queue_size=20)
         rospy.Subscriber("/bricsbot/setpoint/pwm", Float64MultiArray,
                          self._pwm_cb, queue_size=20)
+        rospy.Subscriber("/hofa_policy/shadow_generalized_force",
+                         WrenchStamped, self._shadow_wrench_cb, queue_size=20)
+        rospy.Subscriber("/hofa_policy/shadow_error",
+                         WrenchStamped, self._shadow_error_cb, queue_size=20)
+        rospy.Subscriber("/hofa_policy/shadow_candidate_forces",
+                         JointState, self._shadow_forces_cb, queue_size=20)
+        rospy.Subscriber("/hofa_policy/shadow_timing",
+                         Vector3Stamped, self._shadow_timing_cb, queue_size=20)
+        rospy.Subscriber("/hofa_policy/free_shadow_generalized_force",
+                         WrenchStamped, self._free_shadow_wrench_cb,
+                         queue_size=20)
+        rospy.Subscriber("/hofa_policy/free_shadow_error",
+                         WrenchStamped, self._free_shadow_error_cb,
+                         queue_size=20)
+        rospy.Subscriber("/hofa_policy/free_shadow_candidate_forces",
+                         JointState, self._free_shadow_forces_cb,
+                         queue_size=20)
+        rospy.Subscriber("/hofa_policy/free_shadow_timing",
+                         Vector3Stamped, self._free_shadow_timing_cb,
+                         queue_size=20)
+        rospy.Subscriber("/hofa_policy_controller/candidate_forces",
+                         JointState, self._policy_forces_cb, queue_size=20)
+        rospy.Subscriber("/hofa_policy_controller/timing",
+                         Vector3Stamped, self._policy_timing_cb, queue_size=20)
+        rospy.Subscriber("/hofa_policy/dagger_teacher_generalized_force",
+                         WrenchStamped, self._dagger_teacher_wrench_cb,
+                         queue_size=20)
 
     def reset_reference_model(self):
         """Discard any route published before this run's goal was sent."""
@@ -572,6 +628,101 @@ class ExperimentRecorder(object):
                 "pwm": [float(v) for v in msg.data],
             })
 
+    @staticmethod
+    def _wrench_row(msg):
+        stamp = msg.header.stamp.to_sec()
+        return {
+            "stamp": stamp if stamp > 0.0 else rospy.Time.now().to_sec(),
+            "fx": float(msg.wrench.force.x),
+            "fy": float(msg.wrench.force.y),
+            "nz": float(msg.wrench.torque.z),
+        }
+
+    def _shadow_wrench_cb(self, msg):
+        with self.lock:
+            self.shadow_wrench.append(self._wrench_row(msg))
+
+    def _shadow_error_cb(self, msg):
+        with self.lock:
+            self.shadow_error.append(self._wrench_row(msg))
+
+    def _shadow_forces_cb(self, msg):
+        if len(msg.effort) < 4 or len(msg.position) < 4:
+            return
+        stamp = self._stamp(msg)
+        with self.lock:
+            self.shadow_forces.append({
+                "stamp": stamp,
+                **{"force_%d" % i: float(msg.effort[i]) for i in range(4)},
+                **{"q_%d" % i: float(msg.position[i]) for i in range(4)},
+            })
+
+    def _shadow_timing_cb(self, msg):
+        with self.lock:
+            self.shadow_timing.append({
+                "stamp": self._stamp(msg),
+                "inference_ms": float(msg.vector.x),
+                "odom_age_ms": 1000.0 * float(msg.vector.y),
+                "reference_age_ms": 1000.0 * float(msg.vector.z),
+            })
+
+    def _free_shadow_wrench_cb(self, msg):
+        with self.lock:
+            self.free_shadow_wrench.append(self._wrench_row(msg))
+
+    def _free_shadow_error_cb(self, msg):
+        with self.lock:
+            self.free_shadow_error.append(self._wrench_row(msg))
+
+    def _free_shadow_forces_cb(self, msg):
+        if len(msg.effort) < 4 or len(msg.position) < 4:
+            return
+        stamp = self._stamp(msg)
+        with self.lock:
+            self.free_shadow_forces.append({
+                "stamp": stamp,
+                **{"force_%d" % i: float(msg.effort[i]) for i in range(4)},
+                **{"q_%d" % i: float(msg.position[i]) for i in range(4)},
+            })
+
+    def _free_shadow_timing_cb(self, msg):
+        with self.lock:
+            self.free_shadow_timing.append({
+                "stamp": self._stamp(msg),
+                "inference_ms": float(msg.vector.x),
+                "odom_age_ms": 1000.0 * float(msg.vector.y),
+                "reference_age_ms": 1000.0 * float(msg.vector.z),
+            })
+
+    def _policy_forces_cb(self, msg):
+        if len(msg.effort) < 4 or len(msg.position) < 4:
+            return
+        stamp = self._stamp(msg)
+        with self.lock:
+            self.policy_forces.append({
+                "stamp": stamp,
+                **{"force_%d" % i: float(msg.effort[i]) for i in range(4)},
+                **{"q_%d" % i: float(msg.position[i]) for i in range(4)},
+            })
+
+    def _policy_timing_cb(self, msg):
+        with self.lock:
+            self.policy_timing.append({
+                "stamp": self._stamp(msg),
+                "inference_ms": float(msg.vector.x),
+                "odom_age_ms": 1000.0 * float(msg.vector.y),
+                "reference_age_ms": 1000.0 * float(msg.vector.z),
+            })
+
+    def _dagger_teacher_wrench_cb(self, msg):
+        with self.lock:
+            self.dagger_teacher_wrench.append({
+                "stamp": self._stamp(msg),
+                "fx": float(msg.wrench.force.x),
+                "fy": float(msg.wrench.force.y),
+                "nz": float(msg.wrench.torque.z),
+            })
+
     def evaluation_model(self, path, odom):
         """Absolute plan for ``path``, anchored at the first scored sample."""
         if not path or not odom:
@@ -582,7 +733,13 @@ class ExperimentRecorder(object):
     def snapshot(self):
         with self.lock:
             data = {key: list(getattr(self, key)) for key in
-                    ("odom", "status", "wrench", "pwm", "window", "virtual_accel")}
+                    ("odom", "status", "wrench", "pwm", "window",
+                     "virtual_accel", "shadow_wrench", "shadow_error",
+                     "shadow_forces", "shadow_timing",
+                     "free_shadow_wrench", "free_shadow_error",
+                     "free_shadow_forces", "free_shadow_timing",
+                     "policy_forces", "policy_timing",
+                     "dagger_teacher_wrench")}
             if self.start_stamp is not None:
                 data = {k: [r for r in rows if r["stamp"] >= self.start_stamp]
                         for k, rows in data.items()}
@@ -661,6 +818,29 @@ def write_artifacts(output_dir, data, model, goal_xy):
                for x in data["pwm"]])
     write_csv(os.path.join(output_dir, "mpc_reference_window.csv"),
               data["window"])
+    write_csv(os.path.join(output_dir, "shadow_generalized_force.csv"),
+              data.get("shadow_wrench", []))
+    write_csv(os.path.join(output_dir, "shadow_error.csv"),
+              data.get("shadow_error", []))
+    write_csv(os.path.join(output_dir, "shadow_candidate_forces.csv"),
+              data.get("shadow_forces", []))
+    write_csv(os.path.join(output_dir, "shadow_timing.csv"),
+              data.get("shadow_timing", []))
+    write_csv(os.path.join(output_dir, "free_shadow_generalized_force.csv"),
+              data.get("free_shadow_wrench", []))
+    write_csv(os.path.join(output_dir, "free_shadow_error.csv"),
+              data.get("free_shadow_error", []))
+    write_csv(os.path.join(output_dir, "free_shadow_candidate_forces.csv"),
+              data.get("free_shadow_forces", []))
+    write_csv(os.path.join(output_dir, "free_shadow_timing.csv"),
+              data.get("free_shadow_timing", []))
+    write_csv(os.path.join(output_dir, "policy_candidate_forces.csv"),
+              data.get("policy_forces", []))
+    write_csv(os.path.join(output_dir, "policy_timing.csv"),
+              data.get("policy_timing", []))
+    write_csv(os.path.join(output_dir,
+                           "dagger_teacher_generalized_force.csv"),
+              data.get("dagger_teacher_wrench", []))
 
     t0 = float(model["times"][0])
     evaluation_rows = []
@@ -894,13 +1074,23 @@ class ExperimentBarrier:
     """Wait on fresh data and a calm vehicle, then negotiate a shared epoch."""
     def __init__(self, recorder, topic, controller, depth, timeout):
         self.recorder, self.topic = recorder, topic
-        self.controller = "/hofa_mpc_controller" if controller == "hofa_mpc" else "/planar_pid_tracker"
+        self.controller = {
+            "hofa_mpc": "/hofa_mpc_controller",
+            "hofa_policy": "/hofa_policy_controller",
+            "hofa_policy_dagger": "/hofa_policy_controller",
+            "pid": "/planar_pid_tracker",
+        }[controller]
+        self.roles = ("reference", "controller")
+        self.required_nodes = (self.controller, "/reference_processor")
+        if controller == "hofa_policy_dagger":
+            self.roles += ("dagger_teacher",)
+            self.required_nodes += ("/hofa_policy_dagger_teacher",)
         self.depth, self.timeout = depth, timeout
         self.acks = {}
         self.pub = rospy.Publisher(topic, StartTime, queue_size=1, latch=True)
         self.subs = [rospy.Subscriber(topic + '/' + role + '_ack', StartTime,
                      lambda msg, role=role: self.acks.update({role: msg.data.to_sec()}),
-                     queue_size=1) for role in ('reference', 'controller')]
+                     queue_size=1) for role in self.roles]
 
     def wait_ready(self, require_path, goal_stamp=0.):
         deadline = time.monotonic() + self.timeout
@@ -913,8 +1103,9 @@ class ExperimentBarrier:
                 window = self.recorder.window[-1] if self.recorder.window else None
                 wrench = self.recorder.wrench[-1] if self.recorder.wrench else None
                 pwm = self.recorder.pwm[-1] if self.recorder.pwm else None
-            configured = all(rospy.get_param(node + '/experiment_start_topic', '') == self.topic
-                             for node in (self.controller, '/reference_processor'))
+            configured = all(
+                rospy.get_param(node + '/experiment_start_topic', '') ==
+                self.topic for node in self.required_nodes)
             ready = (configured and self.pub.get_num_connections() >= 2 and
                      row is not None and 0 <= now-row['stamp'] < .25 and
                      row['speed_world'] < .01 and abs(row['r']) < .02 and abs(row['w']) < .02 and
@@ -955,7 +1146,8 @@ class ExperimentBarrier:
         self.recorder.done = False
         self.pub.publish(StartTime(data=start_time))
         deadline = time.monotonic() + 2.0
-        while not all(self.acks.get(role) == start_stamp for role in ('reference', 'controller')):
+        while not all(self.acks.get(role) == start_stamp
+                      for role in self.roles):
             if rospy.is_shutdown() or rospy.Time.now().to_sec() >= start_stamp-.2 or time.monotonic() > deadline:
                 self.stop()
                 raise RuntimeError("Start acknowledgement missing; experiment cancelled")
@@ -1008,17 +1200,142 @@ def terminate_process(process, name):
                   file=sys.stderr)
 
 
+BC_TOPICS = ["/bricsbot/camera_front/image_color", "/bricsbot/camera_front/camera_info",
+             "/bricsbot/imu", "/bricsbot/pressure", "/tf", "/tf_static",
+             "/aquaflow/nominal_path", "/aquaflow/teacher_reference",
+             "/aquaflow/teacher_labels", "/move_base_simple/goal"]
+
+
+def prepare_bc_course(args, output_dir):
+    """Keep generated scene, teacher geometry and task provenance together."""
+    if not args.bc_course:
+        return None
+    course_path = os.path.abspath(args.bc_course)
+    with open(course_path) as f:
+        course = json.load(f)
+    if course.get("vehicle") != "bricsbot" or course.get("schema") != "bricsbot_course_v1":
+        raise ValueError("BC collection requires a generated BricsBot course")
+    if course.get("obstacle_look") != "pillar_black":
+        raise ValueError("BC collection requires black pillars; use the v2 course suite")
+    for name, key in (("scenario.scn", "scenario_sha256"), ("map.yaml", "map_sha256")):
+        source = os.path.join(os.path.dirname(course_path), name)
+        if _sha256_file(source) != course[key]:
+            raise ValueError("BC course hash mismatch: " + name)
+        shutil.copy2(source, os.path.join(output_dir, name))
+    shutil.copy2(course_path, os.path.join(output_dir, "course.json"))
+    args.scene = "single_obstacle" if course["map"]["obstacles"] else "empty_pool"
+    args.goal_x, args.goal_y, args.goal_depth = course["goal"]
+    return course
+
+
+def prepare_policy_trajectory(args, output_dir):
+    """Validate and snapshot an obstacle-free hofa_policy trajectory."""
+    if not args.policy_trajectory:
+        return None
+    source = os.path.abspath(args.policy_trajectory)
+    with open(source) as stream:
+        track = json.load(stream)
+    if track.get("schema") != "hofa_policy_trajectory_v1":
+        raise ValueError("policy trajectory schema mismatch")
+    points = track.get("points", [])
+    if len(points) < 20 or any(len(point) != 4 for point in points):
+        raise ValueError("policy trajectory requires at least 20 [x,y,z,yaw] points")
+    if not all(all(math.isfinite(float(value)) for value in point)
+               for point in points):
+        raise ValueError("policy trajectory contains nonfinite values")
+    snapshot = os.path.join(output_dir, "policy_trajectory.json")
+    shutil.copy2(source, snapshot)
+    args.scene = "empty_pool_control"
+    args.goal_x = float(points[-1][0])
+    args.goal_y = float(points[-1][1])
+    args.goal_depth = float(points[-1][2])
+    return track, snapshot
+
+
+class BCCaptureGuard:
+    def __init__(self):
+        from sensor_msgs.msg import Image, CameraInfo, Imu
+        self.latest = {}
+        self.subs = []
+        types = [(BC_TOPICS[0], Image), (BC_TOPICS[1], CameraInfo),
+                 ("/bricsbot/imu", Imu), ("/aquaflow/nominal_path", Path)]
+        for topic, cls in types:
+            self.subs.append(rospy.Subscriber(topic, cls, self.receive,
+                             callback_args=topic, queue_size=1, buff_size=4000000))
+
+    def receive(self, msg, topic):
+        self.latest[topic] = msg
+
+    def wait(self, process, goal, timeout):
+        deadline = time.monotonic()+timeout
+        required = set(BC_TOPICS[:3] + ["/aquaflow/nominal_path"])
+        while time.monotonic() < deadline and not rospy.is_shutdown():
+            if process.poll() is not None:
+                raise RuntimeError("BC rosbag recorder exited; inspect rosbag.log")
+            now = rospy.Time.now().to_sec()
+            fresh = all(t in self.latest and 0 <= now-self.latest[t].header.stamp.to_sec() < .7
+                        for t in required)
+            nominal = self.latest.get("/aquaflow/nominal_path")
+            same_goal = nominal is not None and nominal.poses and math.hypot(
+                nominal.poses[-1].pose.position.x-goal[0],
+                nominal.poses[-1].pose.position.y-goal[1]) < .01
+            # Require rosbag subscriptions before releasing the controller.
+            subscribers = rosgraph.Master(rospy.get_name()).getSystemState()[1]
+            recording = {t for t, nodes in subscribers if "/aquaflow_bc_recorder" in nodes}
+            if fresh and same_goal and required <= recording:
+                return
+            time.sleep(.05)
+        raise RuntimeError("BC camera/state/nominal/recorder readiness timeout")
+
+
+def snapshot_bc_sources(output_dir):
+    root = os.path.abspath(os.path.join(rospkg.RosPack().get_path("hofa_mpc_ros"), "../.."))
+    files = []
+    for package in ("aquaflow_bc", "aquaflow_ref", "aquaflow_stonefish", "hofa_mpc_ros"):
+        for directory, _, names in os.walk(os.path.join(root, "src", package)):
+            for name in names:
+                if name.endswith((".py", ".yaml", ".launch", ".scn", ".msg")):
+                    files.append(os.path.join(directory, name))
+    for name in ("bricsbot_stonefish_physical_proxy_5000_no_top_bump_pre_refined_no_normals.obj",
+                 "bricsbot_stonefish_baked.obj", "bricsbot.png"):
+        files.append(os.path.join(root, "src/aquaflow_stonefish/data/bricsbot", name))
+    # Record the actual RGB bridge source and built ROS library used by BC.
+    for relative in ("src/stonefish_ros/src/ROSSimulationManager.cpp",
+                     "src/stonefish_ros/include/stonefish_ros/ROSSimulationManager.h",
+                     "src/stonefish_ros/include/stonefish_ros/ImageStampGate.h",
+                     "devel/lib/libstonefish_ros.so"):
+        filename = os.path.join(root, relative)
+        if not os.path.isfile(filename):
+            raise RuntimeError("Missing RGB publisher provenance: " + filename)
+        files.append(filename)
+    hashes = {}
+    for filename in files:
+        rel = os.path.relpath(filename, root)
+        hashes[rel] = _sha256_file(filename)
+        # Copy code/configuration, hash large robot assets without duplicating them.
+        if not filename.endswith((".obj", ".png", ".so")):
+            dest = os.path.join(output_dir, "source_snapshot", rel)
+            os.makedirs(os.path.dirname(dest), exist_ok=True)
+            shutil.copy2(filename, dest)
+    with open(os.path.join(output_dir, "source_manifest.json"), "w") as f:
+        json.dump({"git": _git_metadata(root), "sha256": hashes}, f, indent=2)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--output-root", default=None,
-        help="result root; defaults to results/pid for PID and results/mpc for HOFA-MPC")
+        help="result root; defaults depend on the selected controller")
     parser.add_argument("--launch-pkg", default="hofa_mpc_ros")
     parser.add_argument("--launch-file", default="simulation.launch")
-    parser.add_argument("--controller", choices=("hofa_mpc", "pid"),
+    parser.add_argument("--controller",
+                        choices=("hofa_mpc", "hofa_policy",
+                                 "hofa_policy_dagger", "pid"),
                         default="hofa_mpc",
                         help="backend controller launched by simulation.launch")
     parser.add_argument("--scene", default="random_pillars")
+    parser.add_argument("--scenario-file",
+                        help="explicit Stonefish scenario file override")
     parser.add_argument("--goal-x", type=float, default=4.0)
     parser.add_argument("--goal-y", type=float, default=0.0)
     parser.add_argument("--goal-depth", type=float, default=1.0)
@@ -1036,16 +1353,77 @@ def main():
         "--rescore", metavar="RUN_DIR", default=None,
         help="recompute metrics and plots for an existing run directory from "
              "its CSVs and exit; needs no simulator and no ROS master")
+    parser.add_argument("--bc-course", help="generated course.json; enables complete BC recording")
+    parser.add_argument(
+        "--policy-trajectory",
+        help="hofa_policy trajectory JSON; disables privileged path planning")
+    parser.add_argument("--shadow-checkpoint",
+                        help="enable hofa_policy Shadow with this checkpoint")
+    parser.add_argument("--shadow-device", default="cpu")
+    parser.add_argument("--policy-checkpoint",
+                        help="BC checkpoint used by hofa_policy closed loop")
+    parser.add_argument("--policy-device", default="cpu")
+    parser.add_argument("--policy-depth-kp", type=float, default=8.0)
+    parser.add_argument("--policy-depth-kd", type=float, default=4.0)
+    parser.add_argument("--policy-depth-ki", type=float, default=0.5)
+    parser.add_argument("--policy-depth-integral-limit", type=float,
+                        default=5.0)
+    parser.add_argument("--policy-depth-max-force", type=float, default=15.0)
+    parser.add_argument("--robustness-config",
+                        help="JSON perturbation config for hofa_policy relay")
     args = parser.parse_args(rospy.myargv()[1:])
+    if args.bc_course and (args.headless or args.no_bag or args.no_launch or args.controller != "hofa_mpc"):
+        parser.error("--bc-course requires rendered simulation, rosbag, launch and HOFA-MPC")
+    if args.bc_course and args.policy_trajectory:
+        parser.error("--bc-course and --policy-trajectory are mutually exclusive")
+    if args.bc_course and args.scenario_file:
+        parser.error("--bc-course and --scenario-file are mutually exclusive")
+    if args.policy_trajectory and (
+            args.no_launch or
+            args.controller not in ("hofa_mpc", "hofa_policy",
+                                    "hofa_policy_dagger")):
+        parser.error(
+            "--policy-trajectory requires launch and a supported controller")
+    if args.shadow_checkpoint and (args.no_launch or args.controller != "hofa_mpc"):
+        parser.error("--shadow-checkpoint requires launch and HOFA-MPC")
+    if args.controller in ("hofa_policy", "hofa_policy_dagger") and not args.policy_checkpoint:
+        parser.error("%s requires --policy-checkpoint" % args.controller)
+    if args.policy_checkpoint and args.controller not in (
+            "hofa_policy", "hofa_policy_dagger"):
+        parser.error("--policy-checkpoint requires a policy controller")
+    if (args.policy_checkpoint and
+            not os.path.isfile(os.path.abspath(args.policy_checkpoint))):
+        parser.error("policy checkpoint does not exist: %s" %
+                     args.policy_checkpoint)
+    if args.scenario_file and not os.path.isfile(
+            os.path.abspath(args.scenario_file)):
+        parser.error("scenario file does not exist: %s" % args.scenario_file)
+    if args.robustness_config and args.controller != "hofa_policy":
+        parser.error("--robustness-config requires --controller hofa_policy")
+    if args.robustness_config and not os.path.isfile(
+            os.path.abspath(args.robustness_config)):
+        parser.error("robustness config does not exist: %s" %
+                     args.robustness_config)
 
     if args.rescore:
         rescore(args.rescore)
         return 0
 
     if args.output_root is None:
-        args.output_root = os.path.join(
-            "results", "pid" if args.controller == "pid" else "mpc")
+        default_roots = {
+            "hofa_mpc": "mpc",
+            "hofa_policy": os.path.join("hofa_policy", "deployment"),
+            "hofa_policy_dagger": os.path.join(
+                "hofa_policy", "dagger_raw"),
+            "pid": "pid",
+        }
+        args.output_root = os.path.join("results", default_roots[args.controller])
     output_dir = make_run_dir(os.path.abspath(args.output_root))
+    course = prepare_bc_course(args, output_dir)
+    policy_trajectory = prepare_policy_trajectory(args, output_dir)
+    global_path_topic = ("/hofa_policy/teacher_global_path"
+                         if policy_trajectory else
+                         "/aquaflow/teacher_global_path")
     goal_xy = (args.goal_x, args.goal_y)
     launch_proc = None
     bag_proc = None
@@ -1061,7 +1439,17 @@ def main():
                 raise RuntimeError("roscore did not become available")
 
         rospy.init_node("mpc_experiment_runner", anonymous=True)
-        recorder = ExperimentRecorder(goal_xy, args.timeout)
+        controller_namespace = {
+            "hofa_mpc": "/hofa_mpc_controller",
+            "hofa_policy": "/hofa_policy_controller",
+            "hofa_policy_dagger": "/hofa_policy_controller",
+            "pid": "/planar_pid_tracker",
+        }[args.controller]
+        controller_status_topic = controller_namespace + "/status"
+        recorder = ExperimentRecorder(
+            goal_xy, args.timeout, global_path_topic=global_path_topic,
+            status_topic=controller_status_topic)
+        bc_guard = BCCaptureGuard() if course else None
         if args.no_launch and not args.experiment_start_topic:
             raise RuntimeError("--no-launch requires --experiment-start-topic and pre-armed nodes")
         start_topic = args.experiment_start_topic or ("/experiment/" + os.path.basename(output_dir) + "/start")
@@ -1076,28 +1464,109 @@ def main():
                           "enable:=true", "progress_mode:=schedule",
                           "experiment_start_topic:=" + start_topic,
                           "experiment_depth:=" + str(args.goal_depth)]
+            if course:
+                launch_cmd += ["scenario_file:=" + os.path.join(output_dir, "scenario.scn"),
+                               "map_file:=" + os.path.join(output_dir, "map.yaml"),
+                               "nominal_start_x:=" + str(course["start"][0]),
+                               "nominal_start_y:=" + str(course["start"][1])]
+            elif args.scenario_file:
+                launch_cmd.append(
+                    "scenario_file:=" + os.path.abspath(args.scenario_file))
+            if policy_trajectory:
+                track, snapshot = policy_trajectory
+                launch_cmd += [
+                    "reference_source:=policy_trajectory",
+                    "reference_topic:=/hofa_policy/teacher_global_path",
+                    "policy_trajectory_file:=" + snapshot,
+                    "reference_max_speed:=" + str(track["max_speed_mps"]),
+                    "reference_max_yaw_rate:=" + str(track["max_yaw_rate_radps"]),
+                    "reference_max_accel:=" + str(track["max_accel_mps2"]),
+                    "reference_max_decel:=" + str(track["max_decel_mps2"]),
+                ]
             if args.headless:
                 launch_cmd.append("headless:=true")
+            if args.shadow_checkpoint:
+                launch_cmd += [
+                    "shadow_enable:=true",
+                    "shadow_checkpoint:=" + os.path.abspath(args.shadow_checkpoint),
+                    "shadow_device:=" + args.shadow_device,
+                ]
+            if args.controller == "hofa_policy":
+                launch_cmd += [
+                    "policy_checkpoint:=" +
+                    os.path.abspath(args.policy_checkpoint),
+                    "policy_device:=" + args.policy_device,
+                    "policy_depth_kp:=" + str(args.policy_depth_kp),
+                    "policy_depth_kd:=" + str(args.policy_depth_kd),
+                    "policy_depth_ki:=" + str(args.policy_depth_ki),
+                    "policy_depth_integral_limit:=" +
+                    str(args.policy_depth_integral_limit),
+                    "policy_depth_max_force_n:=" +
+                    str(args.policy_depth_max_force),
+                ]
+            if args.controller == "hofa_policy_dagger":
+                launch_cmd += [
+                    "policy_checkpoint:=" +
+                    os.path.abspath(args.policy_checkpoint),
+                    "policy_device:=" + args.policy_device,
+                    "policy_depth_kp:=" + str(args.policy_depth_kp),
+                    "policy_depth_kd:=" + str(args.policy_depth_kd),
+                    "policy_depth_ki:=" + str(args.policy_depth_ki),
+                    "policy_depth_integral_limit:=" +
+                    str(args.policy_depth_integral_limit),
+                    "policy_depth_max_force_n:=" +
+                    str(args.policy_depth_max_force),
+                ]
+            if args.robustness_config:
+                launch_cmd += [
+                    "robustness_enable:=true",
+                    "robustness_config:=" +
+                    os.path.abspath(args.robustness_config),
+                ]
             launch_proc = subprocess.Popen(launch_cmd, start_new_session=True)
 
         if not args.no_bag:
             bag_file = os.path.join(output_dir, "topics.bag")
             bag_topics = [start_topic, start_topic+"/reference_ack", start_topic+"/controller_ack",
                           "/clock", "/bricsbot/odometry",
-                          "/aquaflow/teacher_global_path",
+                          global_path_topic,
                           "/controller/reference_path",
                           "/controller/reference_velocity",
                           "/controller/reference_trajectory_window",
-                          "/hofa_mpc_controller/status",
+                          controller_status_topic,
+                          "/hofa_policy_dagger_teacher/status",
                           "/hofa_mpc_controller/virtual_accel_cmd",
                           "/controller/generalized_force",
+                          "/hofa_policy_controller/candidate_forces",
+                          "/hofa_policy_controller/timing",
+                          "/hofa_policy/dagger_teacher_generalized_force",
+                          "/hofa_policy/robust/odometry",
+                          "/hofa_policy/robust/reference_trajectory_window",
+                          "/hofa_policy/robust/raw_wrench",
+                          "/hofa_policy/shadow_generalized_force",
+                          "/hofa_policy/shadow_error",
+                          "/hofa_policy/shadow_candidate_forces",
+                          "/hofa_policy/shadow_timing",
+                          "/hofa_policy/free_shadow_generalized_force",
+                          "/hofa_policy/free_shadow_error",
+                          "/hofa_policy/free_shadow_candidate_forces",
+                          "/hofa_policy/free_shadow_timing",
                           "/bricsbot/setpoint/pwm"]
+            if course:
+                bag_topics += BC_TOPICS
             try:
+                bag_command = ["rosbag", "record", "-O", bag_file]
+                if course:
+                    bag_command += ["--lz4", "__name:=aquaflow_bc_recorder"]
+                bag_log = open(os.path.join(output_dir, "rosbag.log"), "w")
                 bag_proc = subprocess.Popen(
-                    ["rosbag", "record", "-O", bag_file] + bag_topics,
+                    bag_command + bag_topics,
                     start_new_session=True,
-                    stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+                    stdout=bag_log, stderr=subprocess.STDOUT)
+                bag_log.close()
             except OSError:
+                if course:
+                    raise
                 print("warning: rosbag not found; continuing without bag",
                       file=sys.stderr)
 
@@ -1106,10 +1575,15 @@ def main():
         recorder.reset_reference_model()
         goal_pub, goal_stamp = publish_goal(goal_xy, args.goal_depth)
         barrier.wait_ready(require_path=True, goal_stamp=goal_stamp)
+        if bc_guard:
+            bc_guard.wait(bag_proc, goal_xy, args.ready_timeout)
+            snapshot_bc_sources(output_dir)
         write_runtime_config(output_dir, args)
         barrier.start(output_dir)
         start = time.time()
         while not rospy.is_shutdown() and time.time() - start < args.timeout:
+            if bc_guard and bag_proc.poll() is not None:
+                raise RuntimeError("BC rosbag recorder failed during collection")
             if recorder.done:
                 break
             rospy.sleep(0.2)

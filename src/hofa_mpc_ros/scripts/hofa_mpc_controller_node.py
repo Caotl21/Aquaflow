@@ -32,7 +32,8 @@ from hofa_mpc_ros.experiment_gate import ExperimentGate
 
 class HofaMPCControllerNode:
     def __init__(self):
-        rospy.init_node("hofa_mpc_controller")
+        node_name = rospy.get_param("~node_name", "hofa_mpc_controller")
+        rospy.init_node(node_name)
 
         # --- Load parameters ---
         self._load_params()
@@ -92,6 +93,8 @@ class HofaMPCControllerNode:
         # controller.  The topic names, units and sign conventions must match
         # that node exactly: body-frame metres in NED/FRD (x forward,
         # y starboard) and signed NED yaw radians.
+        self.publish_tracking_errors = bool(
+            rospy.get_param("~publish_tracking_errors", True))
         self.error_x_pub = rospy.Publisher(
             "/aquaflow/tracking_error/x_body_m", Float64, queue_size=10)
         self.error_y_pub = rospy.Publisher(
@@ -101,7 +104,9 @@ class HofaMPCControllerNode:
         self.error_norm_pub = rospy.Publisher(
             "/aquaflow/tracking_error/xy_norm_m", Float64, queue_size=10)
 
-        self.experiment_gate = ExperimentGate("controller", depth_hold=True)
+        experiment_role = rospy.get_param("~experiment_role", "controller")
+        self.experiment_gate = ExperimentGate(
+            experiment_role, depth_hold=True)
 
         # --- Control timer ---
         rate = self.mpc_params.control_rate_hz
@@ -506,6 +511,8 @@ class HofaMPCControllerNode:
         on which way the vehicle is off-track when overlaid in rqt_plot.
         Convert before publishing.
         """
+        if not self.publish_tracking_errors:
+            return
         dx = self.ref.x - self.state.x
         dy = self.ref.y - self.state.y
         c, s = math.cos(self.state.psi), math.sin(self.state.psi)

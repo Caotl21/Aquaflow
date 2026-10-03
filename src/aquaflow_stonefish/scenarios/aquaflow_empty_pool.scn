@@ -22,12 +22,13 @@
 		</atmosphere>
 	</environment>
 
-	<!-- Keep these names compatible with bluerov2_reference.scn. -->
+	<!-- Keep these names compatible with bricsbot_reference.scn. -->
 	<materials>
 		<material name="Neutral" density="1000.0" restitution="0.1"/>
 		<material name="Rock" density="3000.0" restitution="0.2"/>
 		<material name="Fiberglass" density="1500.0" restitution="0.3"/>
 		<material name="Aluminium" density="2710.0" restitution="0.5"/>
+		<material name="Steel" density="7850.0" restitution="0.5"/>
 		<friction_table>
 			<friction material1="Neutral" material2="Neutral" static="0.5" dynamic="0.2"/>
 			<friction material1="Neutral" material2="Rock" static="0.2" dynamic="0.1"/>
@@ -43,7 +44,7 @@
 	</materials>
 
 	<looks>
-		<!-- Robot looks required by the included BlueROV2 description. -->
+		<!-- Robot looks required by the included BricsBot description. -->
 		<look name="black" gray="0.05" roughness="0.2"/>
 		<look name="yellow" rgb="1.0 0.9 0.0" roughness="0.3"/>
 		<look name="gray" gray="0.5" roughness="0.4" metalness="0.5"/>
@@ -89,8 +90,8 @@
 		<world_transform xyz="0.0 4.1 2.0" rpy="0.0 0.0 0.0"/>
 	</static>
 
-	<include file="$(find aquaflow_stonefish)/scenarios/bluerov2_reference.scn">
-		<arg name="vehicle_name" value="bluerov2"/>
+	<include file="$(find aquaflow_stonefish)/scenarios/bricsbot_reference.scn">
+		<arg name="vehicle_name" value="bricsbot"/>
 		<arg name="position" value="-5.0 0.0 1.0"/>
 		<arg name="orientation" value="0.0 0.0 0.0"/>
 	</include>

@@ -85,12 +85,12 @@ G(x) = J M⁻¹
 
 `SafeInnerBoxStrategy._build_verified_box()` 的算法：
 
-1. 中心 `c = f_drift + G·f_mid`，半宽 `h_raw = Σ|G|·f_half`（这是**外接**盒，不是内接）。
-2. 按 `safe_box_scale`（默认 `1/3`）缩放。
-3. **LP 验证**：对缩放后盒子的 8 个角点各解一个 `scipy.optimize.linprog`（`A_eq = G`，`b_eq = corner − f_drift`，变量边界为推力限幅），确认每个角点都真的可达。
-4. 若不可达，对 scale 做 24 次**二分搜索**，退回到最大可行缩放。
+1. 中心 `c = f_drift + G·f_mid`，外接投影半宽 `h_raw = Σ|G|·f_half`。
+2. 以 `safe_box_scale·h_raw` 作为每个轴允许的最大半宽。默认 `safe_box_scale = 1/3` 保持原控制权限；设为 `1.0` 时允许求解完整的最大归一化内接盒。
+3. 在一个联合 LP 中同时优化三个半宽、最小归一化半宽和 8 个盒角点各自的推进器力见证。每个角点满足 `G·f_corner = G·f_mid + sign⊙h`，且 `f_min ≤ f_corner ≤ f_max`。目标优先最大化三个方向中的最小归一化半宽，再用小权重扩展仍有余量的方向，避免为了扩大平移轴而把偏航半宽压成 0。
+4. 可达集是凸集，因此 8 个角点全部可达即可保证整个轴对齐盒位于真实推进器可达集中。
 
-这保证 MPC 的可行域是真实可达集的**子集** —— 解出来的加速度一定分配得出去。代价是每步 8 次 LP，所以 `layer1_time_ms` 在 `ControllerStatus` 里单独计时上报。
+这保证 MPC 的可行域是真实可达集的**子集**，并把原先每步至少 8 次 LP 加可选二分搜索改成每步 1 次 LP。`layer1_time_ms` 在 `ControllerStatus` 中继续单独计时上报。
 
 控制节点每周期对**整个 horizon 的每一步**调 `compute_for_step()`（输入是 `predict_nominal_states()` 用上周期解左移后预测的名义状态），得到 Np 个盒子后**冻结**，再进 Layer 2 求解。这样避免了"约束依赖轨迹、轨迹依赖约束"的迭代。
 

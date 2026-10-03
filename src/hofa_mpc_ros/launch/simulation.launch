@@ -3,11 +3,21 @@
   <!-- Arguments -->
   <arg name="vehicle_name" default="bricsbot"/>
   <arg name="vehicle_model" default="bricsbot"/>
-  <arg name="controller" default="hofa_mpc" doc="hofa_mpc or pid"/>
+  <arg name="controller" default="hofa_mpc"
+       doc="hofa_mpc, hofa_policy, or pid"/>
   <arg name="scene" default="random_pillars"/>
+  <arg name="scenario_file" default=""/>
+  <arg name="map_file" default="$(eval find('aquaflow_ref') + '/config/' + arg('scene') + '.yaml')"/>
+  <arg name="nominal_start_x" default="-5.0"/>
+  <arg name="nominal_start_y" default="0.0"/>
   <arg name="enable" default="true"/>
   <arg name="experiment_start_topic" default=""/>
   <arg name="experiment_depth" default="1.0"/>
+  <arg name="policy_depth_kp" default="8.0"/>
+  <arg name="policy_depth_kd" default="4.0"/>
+  <arg name="policy_depth_ki" default="0.5"/>
+  <arg name="policy_depth_integral_limit" default="5.0"/>
+  <arg name="policy_depth_max_force_n" default="15.0"/>
   <arg name="headless" default="false"
        doc="Run Stonefish in console/no-GPU mode"/>
   <arg name="platform" default="sim"
@@ -18,6 +28,21 @@
        doc="schedule = absolute plan clock; projection = legacy reference
             re-anchored to the vehicle each cycle (along-track error is then
             identically zero).  Use projection only for A/B comparison."/>
+  <arg name="reference_source" default="teacher"
+       doc="teacher or policy_trajectory"/>
+  <arg name="reference_topic" default="/aquaflow/teacher_global_path"/>
+  <arg name="policy_trajectory_file" default=""/>
+  <arg name="reference_max_speed" default="0.35"/>
+  <arg name="reference_max_yaw_rate" default="0.5"/>
+  <arg name="reference_max_accel" default="0.12"/>
+  <arg name="reference_max_decel" default="0.18"/>
+  <arg name="shadow_enable" default="false"/>
+  <arg name="shadow_checkpoint" default=""/>
+  <arg name="shadow_device" default="cpu"/>
+  <arg name="policy_checkpoint" default=""/>
+  <arg name="policy_device" default="cpu"/>
+  <arg name="robustness_enable" default="false"/>
+  <arg name="robustness_config" default=""/>
 
   <!-- Load parameters at global level -->
   <rosparam command="load" file="$(find hofa_mpc_ros)/config/vehicle_$(arg platform).yaml" />
@@ -28,12 +53,40 @@
     <arg name="vehicle_model" value="$(arg vehicle_model)"/>
     <arg name="scene" value="$(arg scene)"/>
     <arg name="headless" value="$(arg headless)"/>
+    <arg name="scenario_path" value="$(arg scenario_file)"/>
   </include>
 
   <!-- 1b. Start privileged teacher for path planning (RViz 2D Nav Goal → /aquaflow/teacher_reference) -->
-  <include file="$(find aquaflow_ref)/launch/teacher.launch">
-    <arg name="vehicle_name" value="$(arg vehicle_name)"/>
-  </include>
+  <group if="$(eval arg('reference_source') == 'teacher')">
+    <include file="$(find aquaflow_ref)/launch/teacher.launch">
+      <arg name="map_file" value="$(arg map_file)"/>
+      <arg name="nominal_start_x" value="$(arg nominal_start_x)"/>
+      <arg name="nominal_start_y" value="$(arg nominal_start_y)"/>
+      <arg name="nominal_depth" value="$(arg experiment_depth)"/>
+      <arg name="vehicle_name" value="$(arg vehicle_name)"/>
+    </include>
+  </group>
+
+  <group if="$(arg shadow_enable)">
+    <node pkg="hofa_policy" type="hofa_policy_shadow_node.sh"
+          name="hofa_policy_shadow" output="screen">
+      <param name="checkpoint" value="$(arg shadow_checkpoint)"/>
+      <param name="device" value="$(arg shadow_device)"/>
+      <param name="torch_threads" value="1"/>
+      <param name="max_odom_age_s" value="0.05"/>
+      <param name="max_reference_age_s" value="0.15"/>
+      <param name="max_teacher_status_offset_s" value="0.08"/>
+      <param name="max_pair_wait_s" value="0.08"/>
+      <param name="max_free_gap_s" value="0.15"/>
+    </node>
+  </group>
+
+  <group if="$(eval arg('reference_source') == 'policy_trajectory')">
+    <node pkg="hofa_policy" type="hofa_policy_trajectory_publisher.py"
+          name="hofa_policy_trajectory_publisher" output="screen">
+      <param name="trajectory_file" value="$(arg policy_trajectory_file)"/>
+    </node>
+  </group>
 
   <!-- 2. Start thruster allocator for bricsbot -->
   <node pkg="aquaflow_stonefish" type="brics6_thruster_allocator.py"
@@ -47,12 +100,83 @@
         name="reference_processor" output="screen">
     <rosparam command="load" file="$(find hofa_mpc_ros)/config/reference_processor.yaml" />
     <!-- After the rosparam load so it overrides the file value. -->
+    <param name="reference_topic" value="$(arg reference_topic)"/>
     <param name="progress_mode" value="$(arg progress_mode)"/>
+    <param name="max_speed" value="$(arg reference_max_speed)"/>
+    <param name="max_yaw_rate" value="$(arg reference_max_yaw_rate)"/>
+    <param name="max_accel_mps2" value="$(arg reference_max_accel)"/>
+    <param name="max_decel_mps2" value="$(arg reference_max_decel)"/>
     <param name="experiment_start_topic" value="$(arg experiment_start_topic)"/>
     <param name="vehicle_name" value="$(arg vehicle_name)"/>
   </node>
 
   <!-- 4. Start controller -->
+  <group if="$(arg robustness_enable)">
+    <node pkg="hofa_policy" type="hofa_policy_perturbation_relay.py"
+          name="hofa_policy_perturbation_relay" output="screen">
+      <param name="config_file" value="$(arg robustness_config)"/>
+      <param name="raw_odom_topic" value="/$(arg vehicle_name)/odometry"/>
+      <param name="perturbed_odom_topic" value="/hofa_policy/robust/odometry"/>
+      <param name="raw_reference_topic"
+             value="/controller/reference_trajectory_window"/>
+      <param name="perturbed_reference_topic"
+             value="/hofa_policy/robust/reference_trajectory_window"/>
+      <param name="raw_wrench_topic" value="/hofa_policy/robust/raw_wrench"/>
+      <param name="delayed_wrench_topic" value="/controller/generalized_force"/>
+    </node>
+  </group>
+
+  <group if="$(eval controller in ('hofa_policy', 'hofa_policy_dagger'))">
+    <node pkg="hofa_policy" type="hofa_policy_controller_node.sh"
+          name="hofa_policy_controller" output="screen">
+      <param name="checkpoint" value="$(arg policy_checkpoint)"/>
+      <param name="device" value="$(arg policy_device)"/>
+      <param name="torch_threads" value="1"/>
+      <param name="control_rate_hz" value="10.0"/>
+      <param name="max_odom_age_s" value="0.20"/>
+      <param name="max_reference_age_s" value="0.30"/>
+      <rosparam param="max_position_abs_m">[14.0, 8.0]</rosparam>
+      <param name="max_world_speed_mps" value="1.0"/>
+      <param name="max_yaw_rate_radps" value="1.2"/>
+      <param name="enabled" value="$(arg enable)"/>
+      <param name="vehicle_name" value="$(arg vehicle_name)"/>
+      <param name="odom_topic"
+             value="$(eval '/hofa_policy/robust/odometry' if arg('robustness_enable') == 'true' else '/bricsbot/odometry')"/>
+      <param name="reference_topic"
+             value="$(eval '/hofa_policy/robust/reference_trajectory_window' if arg('robustness_enable') == 'true' else '/controller/reference_trajectory_window')"/>
+      <param name="wrench_topic"
+             value="$(eval '/hofa_policy/robust/raw_wrench' if arg('robustness_enable') == 'true' else '/controller/generalized_force')"/>
+      <param name="experiment_start_topic" value="$(arg experiment_start_topic)"/>
+      <param name="experiment_depth" value="$(arg experiment_depth)"/>
+      <param name="depth_kp" value="$(arg policy_depth_kp)"/>
+      <param name="depth_kd" value="$(arg policy_depth_kd)"/>
+      <param name="depth_ki" value="$(arg policy_depth_ki)"/>
+      <param name="depth_integral_limit"
+             value="$(arg policy_depth_integral_limit)"/>
+      <param name="depth_max_force_n"
+             value="$(arg policy_depth_max_force_n)"/>
+    </node>
+  </group>
+
+  <group if="$(eval controller == 'hofa_policy_dagger')">
+    <node pkg="hofa_mpc_ros" type="hofa_mpc_controller_node.py"
+          name="hofa_policy_dagger_teacher" output="screen">
+      <rosparam command="load" file="$(find hofa_mpc_ros)/config/vehicle_$(arg platform).yaml" />
+      <rosparam command="load" file="$(find hofa_mpc_ros)/config/mpc.yaml" />
+      <rosparam command="load" file="$(find hofa_mpc_ros)/config/safety.yaml" />
+      <param name="node_name" value="hofa_policy_dagger_teacher"/>
+      <param name="experiment_role" value="dagger_teacher"/>
+      <param name="publish_tracking_errors" value="false"/>
+      <param name="vehicle_name" value="$(arg vehicle_name)"/>
+      <param name="odom_topic" value="/$(arg vehicle_name)/odometry"/>
+      <param name="wrench_topic"
+             value="/hofa_policy/dagger_teacher_generalized_force"/>
+      <param name="enabled" value="$(arg enable)"/>
+      <param name="experiment_start_topic" value="$(arg experiment_start_topic)"/>
+      <param name="experiment_depth" value="$(arg experiment_depth)"/>
+    </node>
+  </group>
+
   <group if="$(eval controller == 'hofa_mpc')">
     <node pkg="hofa_mpc_ros" type="hofa_mpc_controller_node.py"
           name="hofa_mpc_controller" output="screen">

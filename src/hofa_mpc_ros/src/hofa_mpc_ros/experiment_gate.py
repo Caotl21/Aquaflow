@@ -11,6 +11,13 @@ class ExperimentGate:
         self.integral = 0.0
         self.last_depth_stamp = None
         self.target_depth = float(rospy.get_param('~experiment_depth', 1.0))
+        self.depth_kp = float(rospy.get_param('~depth_kp', 8.0))
+        self.depth_kd = float(rospy.get_param('~depth_kd', 4.0))
+        self.depth_ki = float(rospy.get_param('~depth_ki', 0.5))
+        self.depth_integral_limit = float(
+            rospy.get_param('~depth_integral_limit', 5.0))
+        self.depth_max_force = float(
+            rospy.get_param('~depth_max_force_n', 15.0))
         if self.topic:
             self.ack = rospy.Publisher(self.topic + '/' + role + '_ack', Time, queue_size=1, latch=True)
             self.sub = rospy.Subscriber(self.topic, Time, self._start, queue_size=1)
@@ -47,5 +54,11 @@ class ExperimentGate:
         dt = 0 if self.last_depth_stamp is None else max(0., min(.2, stamp-self.last_depth_stamp))
         self.last_depth_stamp = stamp
         error = self.target_depth - msg.pose.pose.position.z
-        self.integral = max(-5., min(5., self.integral + error*dt))
-        return max(-15., min(15., 8.*error - 4.*msg.twist.twist.linear.z + .5*self.integral))
+        self.integral = max(
+            -self.depth_integral_limit,
+            min(self.depth_integral_limit, self.integral + error * dt))
+        command = (self.depth_kp * error
+                   - self.depth_kd * msg.twist.twist.linear.z
+                   + self.depth_ki * self.integral)
+        return max(-self.depth_max_force,
+                   min(self.depth_max_force, command))
