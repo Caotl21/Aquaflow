@@ -1,0 +1,188 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1120" viewBox="0 0 1800 1120" role="img" aria-labelledby="title desc">
+  <title id="title">HOFA policy network and residual reinforcement learning architecture</title>
+  <desc id="desc">Two-panel architecture diagram. Panel a shows the BC and DAgger policy: a 20-step reference window passes through a point MLP and two one-dimensional convolutions, mean and max pooling are fused with state and previous wrench context, and a tanh actuator head maps to bounded thruster forces and a horizontal wrench. Panel b shows a frozen DAgger policy with a residual TD3 or SAC actor, residual limits and slew limiting, and the same physical allocation layer.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L10,5 L0,10 z" fill="#24445c"/>
+    </marker>
+    <marker id="arrow-dashed" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L10,5 L0,10 z" fill="#6d7882"/>
+    </marker>
+    <style>
+      .ink{fill:#173042;font-family:Arial,Helvetica,sans-serif}
+      .title{font-size:27px;font-weight:700;letter-spacing:.2px}
+      .panel-title{font-size:22px;font-weight:700}
+      .section{font-size:16px;font-weight:700;letter-spacing:.4px}
+      .label{font-size:16px;font-weight:700}
+      .body{font-size:15px}
+      .small{font-size:13px}
+      .tiny{font-size:12px}
+      .muted{fill:#526676}
+      .box{stroke:#24445c;stroke-width:2;rx:13;ry:13}
+      .input{fill:#eaf3f8}
+      .encoder{fill:#d9edf0}
+      .fusion{fill:#e4e0f3}
+      .constraint{fill:#f6e8cf}
+      .rl{fill:#e2f0df}
+      .teacher{fill:#f2e4e8}
+      .output{fill:#dce8f4}
+      .arrow{stroke:#24445c;stroke-width:2.7;fill:none;marker-end:url(#arrow)}
+      .dashed{stroke:#6d7882;stroke-width:2;fill:none;stroke-dasharray:8 7;marker-end:url(#arrow-dashed)}
+      .thin{stroke:#7e8e9a;stroke-width:1.5;fill:none}
+      .divider{stroke:#b9c5cc;stroke-width:1.5}
+      .round{rx:13;ry:13}
+      .center{text-anchor:middle}
+      .right{text-anchor:end}
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1800" height="1120" fill="#ffffff"/>
+  <text x="900" y="45" class="ink title center">HOFA policy: bounded imitation learning with residual RL refinement</text>
+  <text x="900" y="75" class="ink body muted center">Horizontal 3-DOF control in NED/FRD coordinates; the analytic actuator layer remains outside the learned mapping.</text>
+  <line x1="54" y1="99" x2="1746" y2="99" class="divider"/>
+
+  <!-- Panel A -->
+  <text x="62" y="143" class="ink panel-title">(a) BC / DAgger policy network</text>
+  <text x="62" y="169" class="ink body muted">Causal state–reference encoder and bounded latent-thruster head</text>
+
+  <!-- Inputs -->
+  <rect x="62" y="213" width="188" height="67" class="box input"/>
+  <text x="156" y="239" class="ink label center">State</text>
+  <text x="156" y="263" class="ink body center">[u, v, r] ∈ R³</text>
+
+  <rect x="62" y="329" width="188" height="86" class="box input"/>
+  <text x="156" y="356" class="ink label center">Reference window</text>
+  <text x="156" y="380" class="ink body center">20 × 10 features</text>
+  <text x="156" y="401" class="ink small muted center">body-frame, sin/cos Δyaw</text>
+
+  <rect x="62" y="468" width="188" height="76" class="box input"/>
+  <text x="156" y="496" class="ink label center">Previous wrench</text>
+  <text x="156" y="520" class="ink body center">τ<tspan baseline-shift="sub" font-size="12">t−1</tspan> = [F<tspan baseline-shift="sub" font-size="12">x</tspan>, F<tspan baseline-shift="sub" font-size="12">y</tspan>, N<tspan baseline-shift="sub" font-size="12">z</tspan>]</text>
+
+  <!-- Encoders -->
+  <rect x="322" y="213" width="226" height="67" class="box encoder"/>
+  <text x="435" y="239" class="ink label center">Context encoder</text>
+  <text x="435" y="263" class="ink body center">6 → 64 → 64</text>
+
+  <rect x="322" y="329" width="226" height="86" class="box encoder"/>
+  <text x="435" y="355" class="ink label center">Point MLP</text>
+  <text x="435" y="379" class="ink body center">10 → 64 → 96</text>
+  <text x="435" y="401" class="ink small muted center">shared over 20 points</text>
+
+  <rect x="588" y="329" width="226" height="86" class="box encoder"/>
+  <text x="701" y="355" class="ink label center">Temporal encoder</text>
+  <text x="701" y="379" class="ink body center">Conv1D × 2</text>
+  <text x="701" y="401" class="ink small muted center">96 → 96, kernel 3</text>
+
+  <rect x="854" y="316" width="102" height="112" class="box encoder"/>
+  <text x="905" y="348" class="ink label center">Mean</text>
+  <text x="905" y="374" class="ink label center">pool</text>
+  <text x="905" y="404" class="ink body center">96</text>
+
+  <rect x="978" y="316" width="102" height="112" class="box encoder"/>
+  <text x="1029" y="348" class="ink label center">Max</text>
+  <text x="1029" y="374" class="ink label center">pool</text>
+  <text x="1029" y="404" class="ink body center">96</text>
+
+  <!-- Fusion and head -->
+  <rect x="1110" y="276" width="232" height="192" class="box fusion"/>
+  <text x="1226" y="312" class="ink label center">Fusion MLP</text>
+  <text x="1226" y="344" class="ink body center">[96 + 96 + 64] = 256</text>
+  <text x="1226" y="374" class="ink body center">256 → 128 → 128 → 4</text>
+  <text x="1226" y="416" class="ink small muted center">SiLU activations</text>
+  <text x="1226" y="439" class="ink small muted center">latent actuator command</text>
+
+  <rect x="1370" y="276" width="134" height="192" class="box constraint"/>
+  <text x="1437" y="318" class="ink label center">tanh</text>
+  <text x="1437" y="346" class="ink body center">q ∈ [−1,1]⁴</text>
+  <line x1="1392" y1="374" x2="1482" y2="374" class="thin"/>
+  <text x="1437" y="407" class="ink small center">force_mid</text>
+  <text x="1437" y="429" class="ink small center">+ force_half ⊙ q</text>
+
+  <rect x="1532" y="276" width="188" height="192" class="box output"/>
+  <text x="1626" y="314" class="ink label center">Analytic actuator</text>
+  <text x="1626" y="347" class="ink body center">f ∈ [fmin, fmax]</text>
+  <text x="1626" y="379" class="ink body center">τ = B<tspan baseline-shift="sub" font-size="12">h</tspan> f</text>
+  <text x="1626" y="420" class="ink label center">τ<tspan baseline-shift="sub" font-size="12">base</tspan> ∈ R³</text>
+  <text x="1626" y="445" class="ink small muted center">[F<tspan baseline-shift="sub" font-size="10">x</tspan>, F<tspan baseline-shift="sub" font-size="10">y</tspan>, N<tspan baseline-shift="sub" font-size="10">z</tspan>]</text>
+
+  <!-- Panel A arrows -->
+  <path d="M250 246 L322 246" class="arrow"/>
+  <path d="M250 371 L322 371" class="arrow"/>
+  <path d="M250 506 L322 506 L322 246" class="arrow"/>
+  <path d="M548 371 L588 371" class="arrow"/>
+  <path d="M814 371 L854 371" class="arrow"/>
+  <path d="M814 371 L814 462 L1060 462 L1060 428" class="arrow"/>
+  <path d="M956 372 L1110 372" class="arrow"/>
+  <path d="M1080 372 L1110 372" class="arrow"/>
+  <path d="M548 246 L1075 246 L1075 310 L1110 310" class="arrow"/>
+  <path d="M1342 372 L1370 372" class="arrow"/>
+  <path d="M1504 372 L1532 372" class="arrow"/>
+
+  <!-- DAgger supervision -->
+  <rect x="1138" y="508" width="232" height="70" class="box teacher"/>
+  <text x="1254" y="536" class="ink label center">MPC teacher</text>
+  <text x="1254" y="560" class="ink body center">τ<tspan baseline-shift="sub" font-size="12">teacher</tspan></text>
+  <rect x="1398" y="508" width="164" height="70" class="box teacher"/>
+  <text x="1480" y="536" class="ink label center">Loss</text>
+  <text x="1480" y="560" class="ink body center">L<tspan baseline-shift="sub" font-size="12">BC/DAgger</tspan></text>
+  <path d="M1254 508 L1254 468" class="dashed"/>
+  <path d="M1370 543 L1398 543" class="dashed"/>
+  <text x="1212" y="610" class="ink small muted">DAgger: policy-visited state → MPC label; previous action remains policy action.</text>
+
+  <!-- Panel B -->
+  <line x1="54" y1="659" x2="1746" y2="659" class="divider"/>
+  <text x="62" y="704" class="ink panel-title">(b) Frozen DAgger + residual TD3/SAC</text>
+  <text x="62" y="730" class="ink body muted">The base policy is frozen; RL learns only a bounded correction around the learned controller.</text>
+
+  <!-- Base policy compressed block -->
+  <rect x="62" y="779" width="430" height="180" class="box fusion"/>
+  <text x="277" y="818" class="ink label center">Frozen DAgger policy</text>
+  <text x="277" y="850" class="ink body center">same encoder + bounded actuator head</text>
+  <text x="277" y="884" class="ink body center">(state, reference, previous wrench)</text>
+  <text x="277" y="924" class="ink label center">τ<tspan baseline-shift="sub" font-size="12">base</tspan></text>
+  <text x="277" y="946" class="ink small muted center">parameters frozen during RL</text>
+
+  <!-- RL obs -->
+  <rect x="548" y="779" width="268" height="180" class="box rl"/>
+  <text x="682" y="816" class="ink label center">RL observation</text>
+  <text x="682" y="848" class="ink body center">212-D vector</text>
+  <text x="682" y="879" class="ink small center">state (3) + reference (200)</text>
+  <text x="682" y="902" class="ink small center">prev. wrench (3) + base (3)</text>
+  <text x="682" y="925" class="ink small center">prev. residual (3)</text>
+
+  <rect x="872" y="779" width="238" height="180" class="box rl"/>
+  <text x="991" y="816" class="ink label center">Residual actor</text>
+  <text x="991" y="849" class="ink body center">TD3 or SAC</text>
+  <text x="991" y="881" class="ink body center">212 → 128 → 128 → 3</text>
+  <text x="991" y="925" class="ink small muted center">a<tspan baseline-shift="sub" font-size="10">t</tspan> ∈ [−1,1]³</text>
+
+  <rect x="1166" y="779" width="252" height="180" class="box constraint"/>
+  <text x="1292" y="814" class="ink label center">Residual safety layer</text>
+  <text x="1292" y="847" class="ink body center">clip(a) ⊙ residual_limit</text>
+  <text x="1292" y="879" class="ink body center">per-step slew limiter</text>
+  <text x="1292" y="918" class="ink small center">[1.0, 0.4, 0.08]</text>
+  <text x="1292" y="940" class="ink small muted center">N, N, N·m</text>
+
+  <rect x="1474" y="779" width="246" height="180" class="box output"/>
+  <text x="1597" y="814" class="ink label center">Command + allocator</text>
+  <text x="1597" y="847" class="ink body center">τ<tspan baseline-shift="sub" font-size="12">cmd</tspan> = τ<tspan baseline-shift="sub" font-size="12">base</tspan> + δτ</text>
+  <text x="1597" y="879" class="ink body center">six-thruster allocation</text>
+  <text x="1597" y="918" class="ink small center">PWM, saturation, realized wrench</text>
+  <text x="1597" y="941" class="ink small muted center">logged for paired validation</text>
+
+  <!-- Panel B arrows -->
+  <path d="M492 869 L548 869" class="arrow"/>
+  <path d="M816 869 L872 869" class="arrow"/>
+  <path d="M1110 869 L1166 869" class="arrow"/>
+  <path d="M1418 869 L1474 869" class="arrow"/>
+  <path d="M492 924 L1438 924 L1438 869 L1474 869" class="arrow"/>
+
+  <!-- Residual equation callout -->
+  <rect x="62" y="1000" width="1658" height="72" class="box input"/>
+  <text x="891" y="1029" class="ink label center">Residual composition</text>
+  <text x="891" y="1054" class="ink body center">δτ<tspan baseline-shift="sub" font-size="12">t</tspan> = clip(a<tspan baseline-shift="sub" font-size="12">t</tspan>, −1, 1) ⊙ limit, &nbsp; |δτ<tspan baseline-shift="sub" font-size="12">t</tspan> − δτ<tspan baseline-shift="sub" font-size="12">t−1</tspan>| ≤ slew, &nbsp; zero residual = exact DAgger baseline</text>
+
+  <!-- Footer -->
+  <text x="62" y="1100" class="ink tiny muted">Implementation mapping: model.py · residual_core.py · residual_env.py · residual_reward.py · hofa_policy_controller_node.py</text>
+</svg>

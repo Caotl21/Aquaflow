@@ -1,0 +1,196 @@
+{
+  "schema": "hofa_residual_rl_v1",
+  "baseline_checkpoint": "results/hofa_policy/train_dagger_v1/best.pt",
+  "bridge_executable": "artifacts/hofa_rl_native_hydrocore/hofa_stonefish_step",
+  "scenario": "src/aquaflow_stonefish/scenarios/aquaflow_empty_pool_control.scn",
+  "data_dir": "src/aquaflow_stonefish/data",
+  "physics_hz": 100,
+  "control_dt_s": 0.1,
+  "goal_depth": 1.0,
+  "settle_s": 2.0,
+  "episode_timeout_s": 120.0,
+  "routes": [
+    "right_angle",
+    "hairpin",
+    "switchback"
+  ],
+  "randomize_train_routes": true,
+  "residual_limit": [
+    1.0,
+    0.4,
+    0.08
+  ],
+  "residual_slew_per_step": [
+    0.3,
+    0.15,
+    0.025
+  ],
+  "profile": {
+    "max_speed": 0.2,
+    "max_yaw_rate": 0.5,
+    "max_yaw_accel_radps2": 0.25,
+    "max_accel_mps2": 0.12,
+    "max_decel_mps2": 0.18,
+    "yaw_smoothing_window": 5,
+    "yaw_accel_reserve_ratio": 0.2
+  },
+  "reward": {
+    "progress": 5.0,
+    "cross_track": 2.0,
+    "yaw": 1.0,
+    "yaw_rate": 0.3,
+    "lag": 0.2,
+    "effort": 0.03,
+    "smooth": 0.02,
+    "time": 0.05,
+    "success": 20.0,
+    "failure": 20.0
+  },
+  "training": {
+    "learning_rate": 0.0003,
+    "buffer_size": 200000,
+    "learning_starts": 2000,
+    "batch_size": 256,
+    "gamma": 0.99,
+    "tau": 0.005,
+    "net_arch": [
+      128,
+      128
+    ],
+    "td3_noise_std": 0.1,
+    "sac_ent_coef": "auto_0.02",
+    "warmup_mode": "uniform",
+    "warmup_std": 0.05,
+    "warmup_clip": 0.15
+  },
+  "tracking_reward": {
+    "mode": "tolerance",
+    "cross_track_scale_m": 0.01,
+    "yaw_scale_deg": 5.0,
+    "yaw_rate_scale_radps": 0.5,
+    "lag_scale_m": 1.0
+  },
+  "regularization": {
+    "magnitude_scale": [
+      1.0,
+      0.4,
+      0.08
+    ],
+    "change_per_step_scale": [
+      0.3,
+      0.15,
+      0.025
+    ]
+  },
+  "potential_reward": {
+    "mode": "disabled",
+    "terminal_yaw_weight": 0.0,
+    "turn_yaw_rate_weight": 0.0,
+    "terminal_arc_window_m": 1.0,
+    "terminal_yaw_scale_deg": 5.0,
+    "turn_yaw_rate_scale_radps": 0.5,
+    "turn_gate_start_radps": 0.02,
+    "turn_gate_full_radps": 0.2,
+    "difference_discount": 0.99
+  },
+  "comparison_objective": {
+    "reward": {
+      "progress": 5.0,
+      "cross_track": 2.0,
+      "yaw": 1.0,
+      "yaw_rate": 0.3,
+      "lag": 0.2,
+      "effort": 0.03,
+      "smooth": 0.02,
+      "time": 0.05,
+      "success": 20.0,
+      "failure": 20.0
+    },
+    "tracking_reward": {
+      "mode": "tolerance",
+      "cross_track_scale_m": 0.01,
+      "yaw_scale_deg": 5.0,
+      "yaw_rate_scale_radps": 0.5,
+      "lag_scale_m": 1.0
+    },
+    "regularization": {
+      "magnitude_scale": [
+        1.0,
+        0.4,
+        0.08
+      ],
+      "change_per_step_scale": [
+        0.3,
+        0.15,
+        0.025
+      ]
+    },
+    "potential_reward": {
+      "mode": "disabled"
+    }
+  },
+  "validation": {
+    "cases": [
+      {
+        "route": "right_angle",
+        "seed": 11000,
+        "randomized": true,
+        "label": "validation_right_angle_00"
+      },
+      {
+        "route": "right_angle",
+        "seed": 11001,
+        "randomized": true,
+        "label": "validation_right_angle_01"
+      },
+      {
+        "route": "right_angle",
+        "seed": 11002,
+        "randomized": true,
+        "label": "validation_right_angle_02"
+      },
+      {
+        "route": "hairpin",
+        "seed": 11100,
+        "randomized": true,
+        "label": "validation_hairpin_00"
+      },
+      {
+        "route": "hairpin",
+        "seed": 11101,
+        "randomized": true,
+        "label": "validation_hairpin_01"
+      },
+      {
+        "route": "hairpin",
+        "seed": 11102,
+        "randomized": true,
+        "label": "validation_hairpin_02"
+      },
+      {
+        "route": "switchback",
+        "seed": 11200,
+        "randomized": true,
+        "label": "validation_switchback_00"
+      },
+      {
+        "route": "switchback",
+        "seed": 11201,
+        "randomized": true,
+        "label": "validation_switchback_01"
+      },
+      {
+        "route": "switchback",
+        "seed": 11202,
+        "randomized": true,
+        "label": "validation_switchback_02"
+      }
+    ],
+    "selection": {
+      "relative_error_tolerance": 0.05,
+      "final_distance_tolerance_m": 0.005,
+      "duration_tolerance_s": 0.5,
+      "minimum_improvement_m": 0.0001
+    }
+  }
+}

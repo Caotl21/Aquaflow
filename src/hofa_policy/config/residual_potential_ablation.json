@@ -1,0 +1,65 @@
+{
+  "schema": "hofa_residual_potential_ablation_v1",
+  "base_config": "src/hofa_policy/config/residual_rl.json",
+  "training": {
+    "steps": 50000,
+    "seeds": [0, 1, 2],
+    "workers": 6,
+    "worker_threads": 1,
+    "device": "cuda",
+    "eval_freq": 5000,
+    "checkpoint_freq": 5000
+  },
+  "warmup": {
+    "mode": "uniform",
+    "warmup_std": 0.05,
+    "warmup_clip": 0.15
+  },
+  "tracking_reward": {
+    "mode": "tolerance",
+    "cross_track_scale_m": 0.01,
+    "yaw_scale_deg": 5.0,
+    "yaw_rate_scale_radps": 0.5,
+    "lag_scale_m": 1.0
+  },
+  "potential_reward": {
+    "mode": "difference",
+    "terminal_yaw_weight": 0.15,
+    "turn_yaw_rate_weight": 0.10,
+    "terminal_arc_window_m": 1.0,
+    "terminal_yaw_scale_deg": 5.0,
+    "turn_yaw_rate_scale_radps": 0.5,
+    "turn_gate_start_radps": 0.02,
+    "turn_gate_full_radps": 0.20,
+    "difference_discount": 0.99
+  },
+  "regularization": {
+    "magnitude_scale": [1.0, 0.4, 0.08],
+    "change_per_step_scale": [0.3, 0.15, 0.025]
+  },
+  "groups": [
+    {"id": "A_current_reward", "terminal_yaw": false, "turn_yaw_rate": false},
+    {"id": "B_potential_terminal_yaw", "terminal_yaw": true, "turn_yaw_rate": false},
+    {"id": "C_potential_turn_yaw_rate", "terminal_yaw": false, "turn_yaw_rate": true},
+    {"id": "D_potential_both", "terminal_yaw": true, "turn_yaw_rate": true}
+  ],
+  "validation": {
+    "random_cases_per_route": 3,
+    "seed_base": 11000,
+    "selection": {
+      "relative_error_tolerance": 0.05,
+      "final_distance_tolerance_m": 0.005,
+      "duration_tolerance_s": 0.5,
+      "minimum_improvement_m": 0.0001
+    }
+  },
+  "screening": {"random_cases_per_route": 3, "seed_base": 31000},
+  "reserved_final": {"random_cases_per_route": 5, "seed_base": 41000},
+  "notes": [
+    "All groups use the current tolerance tracking reward and uniform residual warmup.",
+    "Potential terms use smooth state potentials and are added as gamma*Phi(next)-Phi(current).",
+    "Terminal yaw potential is gated smoothly by remaining arc length; turn-rate potential is gated smoothly by reference yaw rate.",
+    "The comparison objective disables potential shaping so validation selection remains on the common current reward.",
+    "The weights are conservative starting values and require held-out screening before any final claim."
+  ]
+}

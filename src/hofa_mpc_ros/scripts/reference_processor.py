@@ -23,7 +23,7 @@ from geometry_msgs.msg import PoseStamped, Quaternion, Point, TwistStamped
 from nav_msgs.msg import Odometry, Path
 from std_msgs.msg import Header, Float64
 from hofa_mpc_ros.msg import TrajectoryPoint, TrajectoryPointWindow
-from hofa_mpc_ros.arc_profile import build_arc_profile
+from hofa_mpc_ros.arc_profile import build_arc_profile, project_to_polyline
 from hofa_mpc_ros.experiment_gate import ExperimentGate
 
 
@@ -230,7 +230,8 @@ class ReferenceProcessor:
                 rospy.logwarn_throttle(5.0, "Reference path stale, holding last")
                 return
 
-        # ① Project robot position onto arc-length curve
+        # ① Project robot position onto a local arc-length neighborhood.  A
+        # global nearest-point search is ambiguous on self-overlapping routes.
         s_proj = self._project_to_curve(self.robot_xy[0], self.robot_xy[1])
 
         # ② Clamp: allow small backtrack, enforce monotonic advance
@@ -315,35 +316,12 @@ class ReferenceProcessor:
     # --- Arc-length projection ---
 
     def _project_to_curve(self, rx, ry):
-        """Project robot position onto the arc-length curve, return s value."""
-        x = self.arc_path['x']
-        y = self.arc_path['y']
-        s = self.arc_path['s']
-        n = len(x)
-
-        min_dist = float('inf')
-        best_s = self.s_progress
-
-        for i in range(n - 1):
-            # Project point onto line segment [P_i, P_{i+1}]
-            dx_seg = x[i + 1] - x[i]
-            dy_seg = y[i + 1] - y[i]
-            seg_len_sq = dx_seg * dx_seg + dy_seg * dy_seg
-            if seg_len_sq < 1e-12:
-                continue
-
-            t = ((rx - x[i]) * dx_seg + (ry - y[i]) * dy_seg) / seg_len_sq
-            t = max(0.0, min(1.0, t))
-
-            proj_x = x[i] + t * dx_seg
-            proj_y = y[i] + t * dy_seg
-            dist = math.hypot(rx - proj_x, ry - proj_y)
-
-            if dist < min_dist:
-                min_dist = dist
-                best_s = s[i] + t * (s[i + 1] - s[i])
-
-        return best_s
+        """Project onto the local arc neighborhood, preserving route branch."""
+        projected_s, _, _ = project_to_polyline(
+            rx, ry, self.arc_path, arc_hint=self.s_progress,
+            backward_window_m=self.s_backtrack_tol,
+            forward_window_m=max(0.6, self.lookahead_distance))
+        return projected_s if math.isfinite(projected_s) else self.s_progress
 
     # --- Window resampling ---
 

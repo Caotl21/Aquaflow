@@ -1,0 +1,52 @@
+{
+  "schema": "hofa_residual_ablation_v1",
+  "base_config": "src/hofa_policy/config/residual_rl.json",
+  "training": {
+    "steps": 50000,
+    "seeds": [0, 1, 2],
+    "workers": 6,
+    "worker_threads": 1,
+    "device": "cuda",
+    "eval_freq": 5000,
+    "checkpoint_freq": 5000
+  },
+  "groups": [
+    {"id": "A_uniform_legacy", "warmup_mode": "uniform", "tracking_mode": "legacy"},
+    {"id": "B_small_legacy", "warmup_mode": "small_gaussian", "tracking_mode": "legacy"},
+    {"id": "C_uniform_tolerance", "warmup_mode": "uniform", "tracking_mode": "tolerance"},
+    {"id": "D_small_tolerance", "warmup_mode": "small_gaussian", "tracking_mode": "tolerance"}
+  ],
+  "local_warmup": {"warmup_std": 0.05, "warmup_clip": 0.15},
+  "tolerance_tracking": {
+    "mode": "tolerance",
+    "cross_track_scale_m": 0.01,
+    "yaw_scale_deg": 5.0,
+    "yaw_rate_scale_radps": 0.5,
+    "lag_scale_m": 1.0
+  },
+  "regularization": {
+    "magnitude_scale": [1.0, 0.4, 0.08],
+    "change_per_step_scale": [0.3, 0.15, 0.025]
+  },
+  "validation": {
+    "random_cases_per_route": 3,
+    "seed_base": 11000,
+    "selection": {
+      "relative_error_tolerance": 0.05,
+      "final_distance_tolerance_m": 0.005,
+      "duration_tolerance_s": 0.5,
+      "minimum_improvement_m": 0.0001
+    }
+  },
+  "screening": {"random_cases_per_route": 3, "seed_base": 31000, "include_fixed": true},
+  "reserved_final": {"random_cases_per_route": 5, "seed_base": 41000, "include_fixed": false},
+  "notes": [
+    "Only warmup sampling and tracking error scales differ between groups.",
+    "Network [128,128], learning_starts=2000, gamma, residual limits, regularization weights and entropy mechanism are held fixed from base_config.",
+    "Tracking tolerance scales are experimental starting values, not validated engineering requirements.",
+    "Checkpoint selection minimizes mean cross-track RMSE subject to physical guards; training return is not used across reward modes.",
+    "A model needs at least 0.1 mm mean cross-track improvement over zero residual with success rate maintained, yaw/turn/rate within 5%, final distance within +5 mm, duration within +0.5 s.",
+    "Screening and reserved_final use different route-variation seeds within the same three path families; this does not establish generalization to new path families.",
+    "reserved_final is not executed by the training or default screening command."
+  ]
+}

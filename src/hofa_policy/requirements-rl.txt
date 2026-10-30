@@ -1,0 +1,7 @@
+# Use with the existing oceangym Python >=3.10; keep the pretrained Torch stack.
+stable-baselines3==2.7.0
+gymnasium==1.2.0
+numpy>=1.26,<2
+matplotlib>=3.7
+tensorboard>=2.14
+pytest>=8

@@ -1,0 +1,354 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[margin=23mm]{geometry}
+\usepackage{amsmath,amssymb,bm}
+\usepackage[T1]{fontenc}
+\usepackage[hypertexnames=false]{hyperref}
+\newcommand{\wrap}{\operatorname{wrap}}
+\newcommand{\diag}{\operatorname{diag}}
+\newcommand{\clip}{\operatorname{clip}}
+\title{HOFA-MPC: Equations, Derivations and Identification}
+\author{Implementation notes for the current workspace}
+\date{12 October 2026}
+\begin{document}
+\maketitle
+These equations document the current three-DOF controller. The accompanying
+Chinese Markdown file explains the source evidence and historical validation.
+Equations E16 and E17 deliberately distinguish the consistent correction-input
+model from the current implementation. No controller changes are implied.
+
+\section{Coordinates and dynamics}
+Let $\eta=[x,y,\psi]^T$, $\nu=[u,v,r]^T$, $\tau=[X,Y,N_z]^T$,
+and $\xi=[\eta^T,\nu^T]^T$. The controller uses ENU/FLU internally.
+\begin{align}
+x_E&=y_N,&y_E&=x_N,&\psi_E&=\wrap(\pi/2-\psi_N),\notag\\
+u_{\mathrm{FLU}}&=u_{\mathrm{FRD}},&v_{\mathrm{FLU}}&=-v_{\mathrm{FRD}},&
+r_{\mathrm{FLU}}&=-r_{\mathrm{FRD}},\notag\\
+\tau_{\mathrm{FRD}}&=\diag(1,-1,-1)\tau_{\mathrm{FLU}}.\tag{E01}
+\end{align}
+\begin{equation}
+\dot\eta=J(\psi)\nu,\qquad
+M\dot\nu+C(\nu)\nu+D(\nu)\nu=\tau+d_\tau.\tag{E02}
+\end{equation}
+\begin{equation}
+J=\begin{bmatrix}\cos\psi&-\sin\psi&0\\\sin\psi&\cos\psi&0\\0&0&1\end{bmatrix},\qquad
+\dot J=r\begin{bmatrix}-\sin\psi&-\cos\psi&0\\\cos\psi&-\sin\psi&0\\0&0&0\end{bmatrix}.
+\tag{E03}
+\end{equation}
+\begin{align}
+M&=M_{\mathrm{dry}}+M_A=\diag(m_x,m_y,I_z),\notag\\
+D(\nu)&=\diag(d_{l,x}+d_{q,x}|u|,d_{l,y}+d_{q,y}|v|,d_{l,\psi}+d_{q,\psi}|r|).
+\tag{E04}
+\end{align}
+For diagonal inertia, the implemented optional Coriolis matrix is
+\begin{equation}
+C(\nu)=\begin{bmatrix}0&0&-m_yv\\0&0&m_xu\\m_yv&-m_xu&0\end{bmatrix}.
+\tag{E05}
+\end{equation}
+The current simulation configuration disables this matrix, i.e., $C=0$.
+The kinematic term $\dot J\nu$ is still retained.
+
+\section{HOFA transformation}
+Differentiating the kinematics and substituting the nominal dynamics gives
+\begin{align}
+\ddot\eta&=\dot J\nu+J\dot\nu
+=\dot J\nu-JM^{-1}(C\nu+D\nu)+JM^{-1}\tau\notag\\
+&=b(\xi)+G_\tau(\xi)\tau,\notag\\
+b(\xi)&=\dot J\nu-JM^{-1}(C\nu+D\nu),\qquad G_\tau=JM^{-1}.
+\tag{E06}
+\end{align}
+Since $J^{-1}=J^T$, imposing $\ddot\eta=a_c$ yields
+\begin{equation}
+\boxed{\tau_d=MJ^T(a_c-\dot J\nu)+C\nu+D\nu.}\tag{E07}
+\end{equation}
+This is exact for the nominal model with exact force realization. With an
+additive force disturbance and otherwise exact modeling,
+$\ddot\eta=a_c+JM^{-1}d_\tau$.
+
+\section{Time-indexed reference}
+Let $s$ denote arc length and $V=\dot s$ denote path speed (distinct from sway
+velocity $v$). Then
+\begin{equation}
+\kappa=\frac{d\psi_r}{ds},\qquad \dot\psi_r=V\kappa,\qquad
+\ddot\psi_r=\dot V\kappa+V^2\kappa',\qquad \kappa'=\frac{d\kappa}{ds}.
+\tag{E08}
+\end{equation}
+The implemented speed heuristic is
+\begin{align}
+a_{\ell,\max}&=\max(a_{\mathrm{acc}},a_{\mathrm{dec}}),\notag\\
+b_\psi&=\max\{\alpha_{\max}-|\kappa|a_{\ell,\max},\rho\alpha_{\max}\},\notag\\
+V_{\lim}&=\min\left\{V_{\max},\frac{r_{\max}}{\max(|\kappa|,\epsilon)},
+\sqrt{\frac{b_\psi}{\max(|\kappa'|,\epsilon)}}\right\}.\tag{E09}
+\end{align}
+The budget floor prevents artificial stops; it relaxes the worst-case yaw
+acceleration argument and is not a universal hard-bound proof.
+Forward/backward passes and the approximate arrival-time table are
+\begin{align}
+V_i&\leftarrow\min(V_i,\sqrt{V_{i-1}^2+2a_{\mathrm{acc}}\Delta s_i}),\notag\\
+V_i&\leftarrow\min(V_i,\sqrt{V_{i+1}^2+2a_{\mathrm{dec}}\Delta s_{i+1}}),
+\qquad V_{\mathrm{end}}=0,\notag\\
+T_i&=T_{i-1}+\frac{\Delta s_i}{\max(0.08,(V_{i-1}+V_i)/2)}.\tag{E10}
+\end{align}
+Current settings are $V_{\max}=0.20$, $r_{\max}=0.5$, $\alpha_{\max}=0.25$,
+$a_{\mathrm{acc}}=0.12$, $a_{\mathrm{dec}}=0.18$, $\rho=0.2$ in SI units.
+
+\section{Layer 1: feasible acceleration boxes}
+For horizontal thruster $j$, its position and direction determine
+\begin{equation}
+B_{h,:,j}=\begin{bmatrix}d_{x,j}\\d_{y,j}\\p_{x,j}d_{y,j}-p_{y,j}d_{x,j}\end{bmatrix},\qquad
+\tau=B_hf,\qquad \underline f\le f\le\overline f.\tag{E11}
+\end{equation}
+At a frozen nominal state,
+\begin{align}
+a&=b+Hf,\qquad H=JM^{-1}B_h,\notag\\
+\mathcal A(\xi)&=\{b+Hf:\underline f\le f\le\overline f\},\notag\\
+f_c&=(\overline f+\underline f)/2,\qquad f_\Delta=(\overline f-\underline f)/2,\notag\\
+c&=b+Hf_c,\qquad\bar h_i=\sum_j|H_{ij}|f_{\Delta,j}.\tag{E12}
+\end{align}
+The outer projection box need not be jointly reachable. The implemented LP
+constructs an inner box using one feasible force witness per corner:
+\begin{equation}
+\begin{aligned}
+\max_{h,\beta,\{f^{(s)}\}}\quad &\beta+10^{-4}\sum_{i\in\mathcal I}h_i/\bar h_i\\
+\text{subject to}\quad
+&Hf^{(s)}=Hf_c+\diag(s)h,\quad s\in\{-1,1\}^3,\\
+&\underline f\le f^{(s)}\le\overline f,\\
+&0\le h_i\le\gamma\bar h_i,\quad0\le\beta\le\gamma,\\
+&\beta\bar h_i\le h_i\quad(i\in\mathcal I),\quad
+\mathcal I=\{i:\bar h_i>10^{-12}\},\\
+&\underline a=c-h,\qquad\overline a=c+h.
+\end{aligned}\tag{E13}
+\end{equation}
+Here $\gamma=1/3$. There are 36 variables for four horizontal thrusters.
+Convexity of the reachable set implies containment of the entire box once all
+eight corners have feasible witnesses. This does not establish robustness to
+state prediction errors or exact realization by the downstream pseudoinverse.
+
+\section{Layer 2: error MPC}
+\begin{equation}
+e=\eta-\eta_r,\quad e_\psi=\wrap(\psi-\psi_r),\quad
+\dot e=J\nu-\dot\eta_r,\quad z=\begin{bmatrix}e\\\dot e\end{bmatrix},\quad
+a_c=a_r+w.\tag{E14}
+\end{equation}
+For zero-order-held acceleration with $h=0.1$ s,
+\begin{equation}
+A_d=\begin{bmatrix}I_3&hI_3\\0&I_3\end{bmatrix},\qquad
+B_d=\begin{bmatrix}\frac12h^2I_3\\hI_3\end{bmatrix}.\tag{E15}
+\end{equation}
+Let $q_r=[\eta_r^T,\dot\eta_r^T]^T$. Subtracting the reference from the
+physical double integrator gives the consistent correction-input model
+\begin{align}
+z_{i+1}&=A_dz_i+B_dw_i+\delta_i^{\mathrm{consistent}},\notag\\
+\delta_i^{\mathrm{consistent}}&=A_dq_{r,i}+B_da_{r,i}-q_{r,i+1}.\tag{E16}
+\end{align}
+The current source instead implements
+\begin{align}
+\delta_i^{\mathrm{code}}&=A_dq_{r,i}-q_{r,i+1},\quad0\le i<N_p-1,\notag\\
+\delta_{N_p-1}^{\mathrm{code}}&=0,\notag\\
+z_{i+1}&=A_dz_i+B_dw_i+\delta_i^{\mathrm{code}},\notag\\
+\delta_{i,\psi}^{\mathrm{code}}&=\wrap(h\dot\psi_{r,i}+\psi_{r,i}-\psi_{r,i+1}).
+\tag{E17}
+\end{align}
+Yet it shifts bounds and adds output feedforward according to the correction
+interpretation:
+\begin{equation}
+\underline a_i-a_{r,i}\le w_i\le\overline a_i-a_{r,i},\qquad
+a_c=a_{r,0}+w_0^*.\tag{E18}
+\end{equation}
+Consequently E16 and E17 differ for nonzero reference acceleration. For an
+exactly discretized accelerated reference, $z_0=w_0=0$ gives zero next-step
+error under E16 but $-B_da_{r,0}$ under E17. This document records the mismatch
+without silently changing the implementation.
+
+The implemented objective, with $N_p=20$, is
+\begin{align}
+\min_{w_0,\ldots,w_{N_p-1}}\quad\mathcal J
+&=\sum_{i=0}^{N_p-1}\left(z_i^TQ_i z_i+w_i^TRw_i+\Delta w_i^TS\Delta w_i\right),\notag\\
+Q_i&=\begin{cases}Q&i<N_p-1,\\F&i=N_p-1,\end{cases}\quad F=4Q,\notag\\
+\Delta w_0&=w_0,\qquad\Delta w_i=w_i-w_{i-1}\quad(i\ge1).\tag{E19}
+\end{align}
+The constraints are E17--E18. Current weights are
+\begin{align*}
+Q&=\diag(20,20,20,10,10,8),\\
+R&=\diag(0.20,0.20,0.14),\qquad S=\diag(1.20,1.20,0.75).
+\end{align*}
+The terminal weight acts on $z_{N_p-1}$, not $z_{N_p}$. The first increment
+is relative to zero, not to the previously applied command. With frozen bounds
+this is a convex quadratic box-constrained problem, solved by L-BFGS-B.
+
+\section{Adjoint derivative and computational changes}
+Consider
+\[
+\mathcal L=\mathcal J+\sum_{i=0}^{N_p-1}\lambda_{i+1}^T
+(A_dz_i+B_dw_i+\delta_i-z_{i+1}).
+\]
+Differentiating with respect to intermediate states and controls gives
+\begin{align}
+\lambda_{N_p}&=0,\notag\\
+\lambda_i&=2Q_i z_i+A_d^T\lambda_{i+1},\notag\\
+\nabla_{w_i}\mathcal J&=2Rw_i+B_d^T\lambda_{i+1}+2S\Delta w_i
+-\mathbf1_{i<N_p-1}\,2S\Delta w_{i+1}.\tag{E20}
+\end{align}
+One forward rollout and one backward sweep cost $O(N_p)$ at fixed state
+dimension. Finite differences over $3N_p$ variables cost $O(N_p^2)$ per full
+gradient. This statement concerns evaluations, not the total optimization
+iteration complexity. The shifted warm start is
+\begin{equation}
+W_k^{(0)}=[(w_{k-1,1}^*)^T,\ldots,(w_{k-1,N_p-1}^*)^T,0^T]^T.\tag{E21}
+\end{equation}
+The current objective returns cost and gradient together with
+\texttt{jac=True}, avoiding duplicate evaluations at the same iterate.
+The saved offline solve-only benchmark reports:
+\begin{center}
+\begin{tabular}{lrr}
+\hline
+Latency & Before joint return & After joint return\\\hline
+Mean (ms)&26.297&13.934\\
+Median (ms)&25.060&13.187\\
+P95 (ms)&36.701&19.382\\\hline
+\end{tabular}
+\end{center}
+The mean speedup is $1.887\times$ (47.013\% reduction). Both versions already
+used analytic gradients. The benchmark used 120 reconstructed cases, three
+timed rounds, and 360 solves per version. Paired full sequences and objectives
+had zero maximum difference. This excludes Layer 1 and ROS callback costs;
+it is not an online end-to-end speedup claim.
+
+\section{Allocation and calibrated force commands}
+The library-level four-thruster allocator computes
+\begin{equation}
+f_{\mathrm{lib}}=\clip\left((B_h^TW_aB_h+\lambda_a I)^{-1}B_h^TW_a\tau,
+\underline f,\overline f\right),\quad
+W_a=\diag(1,1,2),\quad\lambda_a=10^{-4}.\tag{E22}
+\end{equation}
+The running launch path instead uses an external six-thruster allocator,
+including depth actuation, in the FRD frame:
+\begin{equation}
+\tau_4=[X,Y,N_z,Z]^T,\qquad
+f_6=A_6^T(A_6A_6^T)^{-1}\tau_4.\tag{E23}
+\end{equation}
+Positive and negative thrust curves are inverted separately by piecewise
+linear interpolation:
+\begin{equation}
+c(F)=c_l+\frac{|F|-F_l}{F_u-F_l}(c_u-c_l),\qquad
+\mathrm{PWM}=\operatorname{sign}(F)c(F).\tag{E24}
+\end{equation}
+The code also zeros forces of magnitude at most 0.05 N and saturates at curve
+endpoints. Pseudoinverse allocation followed by saturation is not an exact
+bounded least-squares optimizer.
+
+\section{Two-stage identification and validation}
+For one axis, use $F=m_{\mathrm{eff}}\dot\chi+d_l\chi+d_q|\chi|\chi$,
+where $\chi$ is $u$, $v$, or $r$. In yaw, inertia has units kg\,m$^2$.
+Steady sweeps identify drag first; fixed-drag transients then identify inertia:
+\begin{align}
+\Phi_{j,:}&=[\bar\chi_j,|\bar\chi_j|\bar\chi_j],\qquad
+y_j=\overline{F_j-m_{\mathrm{given}}\dot\chi_j},\notag\\
+[\hat d_l,\hat d_q]^T&=\arg\min_{\theta\ge0}\|\Phi\theta-y\|_2^2,\notag\\
+b_k&=F_k-\hat d_l\chi_k-\hat d_q|\chi_k|\chi_k,\notag\\
+\hat m_{\mathrm{eff}}^{\mathrm{derivative}}
+&=\frac{\sum_k\dot\chi_kb_k}{\sum_k\dot\chi_k^2},\qquad
+\hat m_A=\hat m_{\mathrm{eff}}-m_{\mathrm{dry}},\notag\\
+\dot{\hat\chi}(t;m)&=\frac{F(t)-\hat d_l\hat\chi-\hat d_q|\hat\chi|\hat\chi}{m},\notag\\
+\hat m_{\mathrm{eff}}^{\mathrm{response}}
+&=\arg\min_{m>0}\sum_{j,k}[\hat\chi_j(t_k;m)-\chi_j(t_k)]^2.\tag{E25}
+\end{align}
+The drag estimate is mass-independent only in the steady-state limit.
+Different nonzero speed magnitudes are required to separate the two drag
+terms; sign reversal alone at one magnitude is insufficient.
+The derivative estimator follows from differentiating a one-parameter
+least-squares objective. The response estimator integrates the scalar ODE,
+avoiding numerical differentiation of measured speed. Historical reports
+document response fitting; the current added-mass CLI implements the
+derivative estimator.
+
+The current Stonefish parameters are
+\begin{align*}
+M_{\mathrm{dry}}&=\diag(7.95,7.95,0.174887),\\
+M_A&=\diag(26.254017,26.254017,0.067653),\\
+M&=\diag(34.204017,34.204017,0.242540),\\
+d_l&=[35.488892,35.656137,1.163915]^T,\\
+d_q&=[17.853671,17.584671,0.021297]^T.
+\end{align*}
+Each axis used ten signed steady trials. Surge used force magnitudes
+4, 6, 8, 10, 12 N for 25 s each; sway used 3, 4, 5, 6, 8 N for 20 s;
+yaw used 0.2, 0.3, 0.4, 0.5, 0.6 N\,m for 20 s.
+
+The accepted translational inertia is the current simulator geometry value.
+On the selected validation transients, surge RMSE was 0.002222 m/s using
+34.204 kg versus 0.005023 m/s using the step-fitted 41.184 kg. Sway RMSE was
+0.001571 m/s using 34.204 kg versus 0.004800 m/s using 43.833 kg.
+The validation subsets excluded both lowest-magnitude trials on each axis.
+These sweeps were held out from inertia fitting, but their steady tails had
+already been used for drag fitting.
+
+Yaw response fitting gave $I_{\mathrm{eff}}=0.24254$ kg\,m$^2$, with
+validation angular-rate RMSE 0.000928 rad/s. The dry yaw inertia is a geometry
+estimate; the effective sum is the more directly validated quantity. These
+are offline, scene-specific estimates, not physical-robot measurements or an
+online adaptive identifier.
+
+\section{Implementation limits}
+The source does not enforce a wall-clock stop at the configured 80 ms
+deadline, an explicit thruster-rate constraint, a terminal invariant set, or
+robust recursive feasibility. Status 1 from L-BFGS-B is accepted when the
+iterate and objective are finite; this is not a convergence certificate.
+Historical timing and validation numbers above were read from saved reports,
+not newly measured for this document.
+\section{Equivalent condensed quadratic program}
+This is an algebraic explanation, not a dense-matrix implementation.
+Let $N=N_p$, $Z=[z_0^T,\ldots,z_{N-1}^T]^T$ and
+$W=[w_0^T,\ldots,w_{N-1}^T]^T$. Repeated substitution gives
+\begin{align}
+z_i&=A_d^iz_0+\sum_{j=0}^{i-1}A_d^{i-1-j}(B_dw_j+\delta_j),\notag\\
+Z&=\mathcal A z_0+\mathcal BW+\mathcal d=p+\mathcal BW,\notag\\
+\mathcal A_i&=A_d^i,\qquad
+\mathcal B_{ij}=\begin{cases}A_d^{i-1-j}B_d&j<i,\\0&j\ge i,\end{cases}\notag\\
+\mathcal d_i&=\sum_{j=0}^{i-1}A_d^{i-1-j}\delta_j,
+\qquad i,j\in\{0,\ldots,N-1\}.\tag{E26}
+\end{align}
+Empty sums are zero. Choosing E17 for $\delta$ recovers the current source;
+choosing E16 yields the consistent correction-input model.
+Let $L$ have identity diagonal blocks and negative identity first
+subdiagonal blocks, so $LW$ stacks the increments with $\Delta w_0=w_0$.
+Define
+\[
+\bar Q=\operatorname{blkdiag}(Q,\ldots,Q,F),\qquad
+\bar R=I_N\otimes R,\qquad \bar S=I_N\otimes S.
+\]
+Then
+\begin{align}
+\mathcal J(W)&=(p+\mathcal BW)^T\bar Q(p+\mathcal BW)
+ +W^T\bar RW+(LW)^T\bar S(LW)\notag\\
+&=\tfrac12W^T\mathsf HW+g^TW+p^T\bar Qp,\notag\\
+\mathsf H&=2(\mathcal B^T\bar Q\mathcal B+\bar R+L^T\bar SL),\qquad
+g=2\mathcal B^T\bar Qp,\notag\\
+\min_W\quad&\tfrac12W^T\mathsf HW+g^TW,\qquad \ell\le W\le u,\notag\\
+\ell_i&=\underline a_i-a_{r,i},\quad u_i=\overline a_i-a_{r,i},\quad
+\nabla_W\mathcal J=\mathsf HW+g.\tag{E27}
+\end{align}
+Since $R\succ0$ and the other quadratic terms are positive semidefinite,
+$v^T\mathsf Hv\ge2v^T\bar Rv>0$ for every nonzero $v$.
+Thus this frozen finite-dimensional problem is strictly convex. This does
+not prove stability of the nonlinear closed loop. E20 computes the same
+gradient without explicitly constructing the condensed matrices.
+The last column block of $\mathcal B$ is zero: $w_{N-1}$ only affects the
+unpenalized $z_N$. Its optimization still involves input and increment costs.
+
+\section{One receding-horizon control cycle}
+\begin{enumerate}
+\item Convert measurements to ENU/FLU (E01), read the time-indexed reference,
+and form $z_0$ (E14).
+\item Shift the previous correction sequence (E21), predict with E17, and
+recover nominal physical states using
+$\hat\eta_i=\eta_{r,i}+\hat e_i$ and
+$\hat\nu_i=J(\hat\psi_i)^T(\dot\eta_{r,i}+\widehat{\dot e}_i)$.
+\item Compute E12 and solve E13 once per stage; freeze all 20 boxes.
+\item Shift the boxes by reference acceleration (E18), then solve E19
+with the joint objective and adjoint gradient E20. The current limit is
+90 iterations; finite status 0/1 results are accepted.
+\item Execute only $a_c=a_{r,0}+w_0^*$, apply E07, configured force scaling,
+safety clipping, and the FLU-to-FRD force conversion.
+\item The external allocator applies E23 and E24. Repeat using new
+measurements at the next 0.1-second cycle.
+\end{enumerate}
+\end{document}

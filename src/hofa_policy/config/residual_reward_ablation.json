@@ -1,0 +1,85 @@
+{
+  "schema": "hofa_residual_reward_ablation_v1",
+  "base_config": "src/hofa_policy/config/residual_rl.json",
+  "training": {
+    "steps": 50000,
+    "seeds": [0, 1, 2],
+    "workers": 6,
+    "worker_threads": 1,
+    "device": "cuda",
+    "eval_freq": 5000,
+    "checkpoint_freq": 5000
+  },
+  "warmup": {
+    "mode": "uniform",
+    "warmup_std": 0.05,
+    "warmup_clip": 0.15
+  },
+  "tracking_reward": {
+    "mode": "tolerance",
+    "cross_track_scale_m": 0.01,
+    "yaw_scale_deg": 5.0,
+    "yaw_rate_scale_radps": 0.5,
+    "lag_scale_m": 1.0,
+    "terminal_yaw_window_m": 0.5,
+    "terminal_arc_window_m": 0.5,
+    "terminal_yaw_scale_deg": 5.0,
+    "turn_yaw_rate_threshold_radps": 0.05
+  },
+  "extra_weights": {
+    "terminal_yaw": 0.15,
+    "turn_yaw_rate": 0.1
+  },
+  "regularization": {
+    "magnitude_scale": [1.0, 0.4, 0.08],
+    "change_per_step_scale": [0.3, 0.15, 0.025]
+  },
+  "groups": [
+    {
+      "id": "A_current_reward",
+      "terminal_yaw": false,
+      "turn_yaw_rate": false
+    },
+    {
+      "id": "B_terminal_yaw",
+      "terminal_yaw": true,
+      "turn_yaw_rate": false
+    },
+    {
+      "id": "C_turn_yaw_rate",
+      "terminal_yaw": false,
+      "turn_yaw_rate": true
+    },
+    {
+      "id": "D_terminal_yaw_turn_yaw_rate",
+      "terminal_yaw": true,
+      "turn_yaw_rate": true
+    }
+  ],
+  "validation": {
+    "random_cases_per_route": 3,
+    "seed_base": 11000,
+    "selection": {
+      "relative_error_tolerance": 0.05,
+      "final_distance_tolerance_m": 0.005,
+      "duration_tolerance_s": 0.5,
+      "minimum_improvement_m": 0.0001
+    }
+  },
+  "screening": {
+    "random_cases_per_route": 3,
+    "seed_base": 31000
+  },
+  "reserved_final": {
+    "random_cases_per_route": 5,
+    "seed_base": 41000
+  },
+  "notes": [
+    "All groups use the current C_uniform_tolerance reward scales and uniform residual warmup.",
+    "The endpoint term is active only within terminal_yaw_window_m of the goal and uses the final reference yaw.",
+    "The turn-rate term is active only when the absolute reference yaw rate reaches the configured threshold.",
+    "Network, residual limits, slew limits, physical regularization, entropy, routes, seeds and budget are fixed.",
+    "Validation model selection uses the shared current reward through comparison_objective; training reward is not compared across groups.",
+    "The two extra weights are conservative starting values and require held-out screening before any final claim."
+  ]
+}

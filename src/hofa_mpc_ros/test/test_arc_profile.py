@@ -6,7 +6,8 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 import numpy as np
-from hofa_mpc_ros.arc_profile import build_arc_profile, smooth_by_arc_length
+from hofa_mpc_ros.arc_profile import (build_arc_profile, project_to_polyline,
+                                      smooth_by_arc_length)
 
 
 def straight_line(length=10.0, n=101):
@@ -53,6 +54,34 @@ class TestGeometry:
     def test_too_few_points_rejected(self):
         with pytest.raises(ValueError):
             build_arc_profile([0.0], [0.0], **LIMITS)
+
+    def test_local_projection_stays_on_hairpin_return_branch(self):
+        # The same x/y neighborhood occurs on both the outbound and return
+        # legs. A global nearest-point search chooses the first leg; a local
+        # arc hint must keep the projection on the current return branch.
+        x = np.asarray([-5.0, -1.0, -1.0, 2.0, -1.0, -1.0, 3.0])
+        y = np.asarray([0.0, 0.0, 2.0, 2.0, 2.0, 0.0, 0.0])
+        profile = build_arc_profile(x, y, **LIMITS)
+        global_arc = project_to_polyline(-1.0, 0.0, profile, arc_hint=None)[0]
+        return_hint = profile["s"][-3]
+        local_arc = project_to_polyline(-1.0, 0.0, profile,
+                                        arc_hint=return_hint,
+                                        backward_window_m=0.3,
+                                        forward_window_m=0.6)[0]
+        assert global_arc < profile["s"][-3] - 1.0
+        assert local_arc > profile["s"][-3] - 0.4
+
+    def test_heading_wrap_is_unwrapped_before_smoothing(self):
+        """A tangent crossing +pi must not be averaged through zero."""
+        theta = np.linspace(-0.5 * math.pi, 0.75 * math.pi, 161)
+        x = 2.0 * np.cos(theta)
+        y = 2.0 * np.sin(theta)
+        profile = build_arc_profile(x, y, **LIMITS)
+        tangent = np.unwrap(np.arctan2(np.gradient(y), np.gradient(x)))
+        crossing = int(np.argmin(np.abs(np.unwrap(tangent) - math.pi)))
+        # The equivalent heading is close to +/-pi, never near the false
+        # average at zero that the old wrapped smoothing produced.
+        assert abs(profile['yaw'][crossing]) > 2.5
 
 
 class TestSpeedProfile:

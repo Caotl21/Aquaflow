@@ -1,0 +1,43 @@
+{
+  "schema": "hofa_residual_desired_smooth_ablation_v1",
+  "base_config": "src/hofa_policy/config/residual_desired_smooth_base.json",
+  "base_origin": "results/hofa_policy/residual_rl/potential_long_1m_20261025/A_current_reward/config.json",
+  "base_origin_sha256": "5ca660c56ed81f9aa6a6f72187b89e5001b5ec7c2c58c69a345150369676530a",
+  "desired_smooth_weight": 0.02,
+  "desired_axis_weights": [
+    0,
+    1,
+    1
+  ],
+  "desired_change_per_step_scale": [
+    0.3,
+    0.15,
+    0.025
+  ],
+  "validation": {
+    "random_cases_per_route": 3,
+    "seed_base": 11000,
+    "selection": {
+      "relative_error_tolerance": 0.05,
+      "final_distance_tolerance_m": 0.005,
+      "duration_tolerance_s": 0.5,
+      "minimum_improvement_m": 0.0001
+    }
+  },
+  "screening": {
+    "random_cases_per_route": 3,
+    "seed_base": 71000
+  },
+  "reserved_final": {
+    "random_cases_per_route": 5,
+    "seed_base": 81000
+  },
+  "notes": [
+    "Both groups receive previous pre-slew desired residual (215-dimensional observation).",
+    "Only reward.desired_smooth differs between A and B; both SAC models start fresh.",
+    "Penalty is -0.02 * dt * mean over Fy,Nz of squared normalized pre-slew desired changes.",
+    "No clipping of penalty; all original tracking and applied-residual terms remain.",
+    "Selection uses unchanged physical guards/common objective; jitter metrics are diagnostics.",
+    "71000 screening is development evaluation; 81000 final cases remain untouched."
+  ]
+}

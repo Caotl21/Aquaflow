@@ -1213,7 +1213,8 @@ def prepare_bc_course(args, output_dir):
     course_path = os.path.abspath(args.bc_course)
     with open(course_path) as f:
         course = json.load(f)
-    if course.get("vehicle") != "bricsbot" or course.get("schema") != "bricsbot_course_v1":
+    if course.get("vehicle") != "bricsbot" or course.get("schema") not in (
+            "bricsbot_course_v1", "bricsbot_course_v2"):
         raise ValueError("BC collection requires a generated BricsBot course")
     if course.get("obstacle_look") != "pillar_black":
         raise ValueError("BC collection requires black pillars; use the v2 course suite")
@@ -1223,7 +1224,13 @@ def prepare_bc_course(args, output_dir):
             raise ValueError("BC course hash mismatch: " + name)
         shutil.copy2(source, os.path.join(output_dir, name))
     shutil.copy2(course_path, os.path.join(output_dir, "course.json"))
-    args.scene = "single_obstacle" if course["map"]["obstacles"] else "empty_pool"
+    # The generated scenario is authoritative.  Keep the scene argument
+    # compatible with the launch defaults for auxiliary nodes while allowing
+    # mixed 0/1/2/3-pillar courses to carry their own geometry.
+    if course.get("schema") == "bricsbot_course_v2":
+        args.scene = "random_pillars" if course["map"]["obstacles"] else "empty_pool"
+    else:
+        args.scene = "single_obstacle" if course["map"]["obstacles"] else "empty_pool"
     args.goal_x, args.goal_y, args.goal_depth = course["goal"]
     return course
 

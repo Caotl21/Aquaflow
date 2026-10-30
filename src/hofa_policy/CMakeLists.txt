@@ -21,6 +21,7 @@ catkin_install_python(PROGRAMS
   scripts/hofa_policy_shadow_node.py
   scripts/hofa_policy_controller_node.py
   scripts/hofa_policy_perturbation_relay.py
+  scripts/run_policy_comparison.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 

@@ -29,18 +29,25 @@
             re-anchored to the vehicle each cycle (along-track error is then
             identically zero).  Use projection only for A/B comparison."/>
   <arg name="reference_source" default="teacher"
-       doc="teacher or policy_trajectory"/>
+       doc="teacher, policy_trajectory or external"/>
+  <arg name="mpc_reference_window_topic" default="/controller/reference_trajectory_window"/>
+  <arg name="mpc_reference_window_only" default="false"/>
   <arg name="reference_topic" default="/aquaflow/teacher_global_path"/>
   <arg name="policy_trajectory_file" default=""/>
   <arg name="reference_max_speed" default="0.35"/>
   <arg name="reference_max_yaw_rate" default="0.5"/>
+  <arg name="reference_max_yaw_accel" default="0.25"/>
   <arg name="reference_max_accel" default="0.12"/>
   <arg name="reference_max_decel" default="0.18"/>
   <arg name="shadow_enable" default="false"/>
   <arg name="shadow_checkpoint" default=""/>
   <arg name="shadow_device" default="cpu"/>
-  <arg name="policy_checkpoint" default=""/>
+  <arg name="policy_checkpoint" default=""
+       doc="Required for hofa_policy: absolute path to a trained policy checkpoint (.pt)"/>
   <arg name="policy_device" default="cpu"/>
+  <arg name="policy_python" default="/home/bricsbot/miniconda3/envs/oceangym/bin/python"/>
+  <arg name="policy_residual_model" default=""/>
+  <arg name="policy_residual_algo" default="td3"/>
   <arg name="robustness_enable" default="false"/>
   <arg name="robustness_config" default=""/>
 
@@ -104,6 +111,7 @@
     <param name="progress_mode" value="$(arg progress_mode)"/>
     <param name="max_speed" value="$(arg reference_max_speed)"/>
     <param name="max_yaw_rate" value="$(arg reference_max_yaw_rate)"/>
+    <param name="max_yaw_accel_radps2" value="$(arg reference_max_yaw_accel)"/>
     <param name="max_accel_mps2" value="$(arg reference_max_accel)"/>
     <param name="max_decel_mps2" value="$(arg reference_max_decel)"/>
     <param name="experiment_start_topic" value="$(arg experiment_start_topic)"/>
@@ -129,7 +137,10 @@
   <group if="$(eval controller in ('hofa_policy', 'hofa_policy_dagger'))">
     <node pkg="hofa_policy" type="hofa_policy_controller_node.sh"
           name="hofa_policy_controller" output="screen">
+      <env name="HOFA_POLICY_PYTHON" value="$(arg policy_python)"/>
       <param name="checkpoint" value="$(arg policy_checkpoint)"/>
+      <param name="residual_model" value="$(arg policy_residual_model)"/>
+      <param name="residual_algo" value="$(arg policy_residual_algo)"/>
       <param name="device" value="$(arg policy_device)"/>
       <param name="torch_threads" value="1"/>
       <param name="control_rate_hz" value="10.0"/>
@@ -141,7 +152,7 @@
       <param name="enabled" value="$(arg enable)"/>
       <param name="vehicle_name" value="$(arg vehicle_name)"/>
       <param name="odom_topic"
-             value="$(eval '/hofa_policy/robust/odometry' if arg('robustness_enable') == 'true' else '/bricsbot/odometry')"/>
+             value="$(eval '/hofa_policy/robust/odometry' if arg('robustness_enable') == 'true' else '/' + arg('vehicle_name') + '/odometry')"/>
       <param name="reference_topic"
              value="$(eval '/hofa_policy/robust/reference_trajectory_window' if arg('robustness_enable') == 'true' else '/controller/reference_trajectory_window')"/>
       <param name="wrench_topic"
@@ -187,6 +198,8 @@
       <param name="vehicle_name" value="$(arg vehicle_name)"/>
       <param name="odom_topic" value="/$(arg vehicle_name)/odometry"/>
       <param name="wrench_topic" value="/controller/generalized_force"/>
+      <param name="reference_window_topic" value="$(arg mpc_reference_window_topic)"/>
+      <param name="reference_window_only" value="$(arg mpc_reference_window_only)"/>
       <param name="enabled" value="$(arg enable)"/>
       <param name="experiment_start_topic" value="$(arg experiment_start_topic)"/>
       <param name="experiment_depth" value="$(arg experiment_depth)"/>

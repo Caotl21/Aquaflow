@@ -1,5 +1,7 @@
 # hofa_policy
 
+冻结 DAgger 后使用 TD3/SAC 训练小残差控制器，见 [RESIDUAL_RL.md](RESIDUAL_RL.md)。
+
 水平面 HOFA-MPC 策略蒸馏包。它与规划层 `aquaflow_bc` 相互独立。
 
 第一版从已有 MPC 实验记录构造训练数据，学习：
@@ -44,7 +46,51 @@ export PYTHONPATH="$PWD/src/hofa_policy:$PYTHONPATH"
   --epochs 100 --device cuda
 ```
 
-当前代码是 P0 工程骨架。正式闭环前仍需完成 Shadow、独立路线测试、MPC 回退和 MCU 一致性核对。
+## RViz 点目标闭环
+
+策略已接入 `hofa_mpc_ros/simulation.launch` 的控制后端选择：
+
+```bash
+source /home/bricsbot/catkin_ws/scripts/setup_stonefish_ros.sh
+roslaunch hofa_mpc_ros simulation.launch controller:=hofa_policy \
+  policy_checkpoint:=/home/bricsbot/catkin_ws/results/hofa_policy/train_v1_epoch500/best.pt \
+  policy_device:=cpu
+```
+
+另一个已加载 ROS 环境的终端运行：
+
+```bash
+roslaunch aquaflow_stonefish visualization.launch vehicle_model:=bricsbot
+```
+
+RViz 的 `2D Nav Goal` 经 A*、平滑和参考处理器生成策略输入，策略发布
+`/controller/generalized_force`，六推进器分配器输出 PWM。手动启动时同样
+保持 `experiment_depth`（默认 1 m），无需设置实验启动同步 topic。
+`simulation.launch` 已包含教师节点，不要另开 `teacher.launch`。
+
+`controller:=pid` 和 `controller:=hofa_mpc` 可切换为另外两种后端。
+已有 Shadow 和无障碍独立路线闭环记录；随机障碍路线、MPC 自动回退和
+MCU 一致性仍需单独验证。
+
+## BC 与 DAgger 同路径对比
+
+在同一条急弯路径、同一场景和同一参考参数下顺序测试原始 BC 与 DAgger：
+
+```bash
+source /home/bricsbot/catkin_ws/scripts/setup_stonefish_ros.sh
+rosrun hofa_policy run_policy_comparison.py \
+  --route right_angle \
+  --baseline-checkpoint /home/bricsbot/catkin_ws/results/hofa_policy/train_v1_epoch500/best.pt \
+  --dagger-checkpoint /home/bricsbot/catkin_ws/results/hofa_policy/train_dagger_v1/best.pt
+```
+
+每个 checkpoint 都会启动一次全新的 Stonefish，结果分别保存在
+`results/hofa_policy/policy_comparison/baseline_bc/` 和 `dagger/`；汇总结果
+写入同一目录下的 `comparison_*.json` 与 `comparison_*.csv`，并自动生成
+`plots/comparison_xy.*`、`plots/comparison_errors.*` 和
+`plots/comparison_metrics.*`，每个 run 目录也保存单独的 `plots/`。可用
+`--route hairpin` 或 `--route switchback` 测试其他固定路径，使用
+`--headless` 关闭 Stonefish 图形窗口。
 
 ## Shadow 评估
 

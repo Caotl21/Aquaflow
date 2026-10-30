@@ -70,11 +70,14 @@ class HofaMPCControllerNode:
             "~reset", Empty, self._reset_cb, queue_size=1)
 
         # Reference trajectory from reference_processor (arc-length projected)
-        self.traj_ref_sub = rospy.Subscriber(
-            "/controller/reference_trajectory", TrajectoryPoint,
-            self._traj_ref_cb, queue_size=1)
+        self.reference_window_only = bool(rospy.get_param("~reference_window_only", False))
+        self.traj_ref_sub = None
+        if not self.reference_window_only:
+            self.traj_ref_sub = rospy.Subscriber(
+                "/controller/reference_trajectory", TrajectoryPoint,
+                self._traj_ref_cb, queue_size=1)
         self.traj_window_sub = rospy.Subscriber(
-            "/controller/reference_trajectory_window", TrajectoryPointWindow,
+            rospy.get_param("~reference_window_topic", "/controller/reference_trajectory_window"), TrajectoryPointWindow,
             self._traj_window_cb, queue_size=1)
 
         # --- Publishers ---
@@ -305,7 +308,11 @@ class HofaMPCControllerNode:
             ddpsi=-msg.accel.angular.z)
 
     def _traj_window_cb(self, msg):
-        if not msg.valid or not msg.points:
+        if not msg.valid or not msg.points or not all(p.valid for p in msg.points):
+            if self.reference_window_only:
+                self.ref = None
+                self.ref_window = None
+                self.ref_time = 0.0
             return
         self.ref_window = [self._reference_from_msg(point) for point in msg.points]
         self.ref = self.ref_window[0]

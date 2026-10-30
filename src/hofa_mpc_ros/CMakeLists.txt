@@ -34,6 +34,8 @@ catkin_install_python(PROGRAMS
   scripts/hofa_mpc_controller_node.py
   scripts/reference_processor.py
   scripts/run_mpc_experiment.py
+  scripts/run_tracking_experiment.py
+  scripts/plot_tracking_results.py
   scripts/fit_drag_coefficients.py
   scripts/run_identification.py
   scripts/trajectory_server_node.py

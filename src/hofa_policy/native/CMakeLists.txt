@@ -1,0 +1,7 @@
+cmake_minimum_required(VERSION 3.16)
+project(hofa_stonefish_rl LANGUAGES CXX)
+find_package(Stonefish 1.6.0 REQUIRED)
+add_executable(hofa_stonefish_step stonefish_step.cpp)
+target_compile_features(hofa_stonefish_step PRIVATE cxx_std_17)
+target_link_libraries(hofa_stonefish_step PRIVATE Stonefish::Stonefish)
+target_compile_options(hofa_stonefish_step PRIVATE -Wall -Wextra)

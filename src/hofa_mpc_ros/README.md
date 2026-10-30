@@ -1,5 +1,51 @@
 # BricsBot 跟踪实验脚本
 
+## RViz 点目标与三种控制后端
+
+`simulation.launch` 支持 `controller:=pid`、`controller:=hofa_mpc`（默认）和
+`controller:=hofa_policy`。三种模式共用 A* 教师规划、平滑、参考窗口处理和
+六推进器分配器；`hofa_policy` 学习输出水平广义力，深度由 PID 保持。
+
+急弯专项测试使用同一套参考处理器和控制器，但把外部生成的 90°/回头弯
+`nav_msgs/Path` 接入 `/tracking_test/reference`，记录参考 profile、实际
+里程计、控制力、PWM、转弯 yaw 误差和 yaw-rate 误差：
+
+```bash
+rosrun hofa_mpc_ros run_tracking_experiment.py \
+  --controller hofa_mpc --route right_angle --headless
+```
+
+可选路线为 `right_angle`、`hairpin`、`switchback`；用
+`--turns right_angle,hairpin,switchback` 可连续运行多条路线。脚本输出到
+`results/tracking_sharp_turns/run_*/`。当前机器若没有 ROS Noetic/Stonefish
+环境，只能先运行 profile 单测，不能产生真实闭环 CSV。
+
+在 ROS / Stonefish 环境的终端中启动仿真，以下三条选一条：
+
+```bash
+source /home/bricsbot/catkin_ws/scripts/setup_stonefish_ros.sh
+roslaunch hofa_mpc_ros simulation.launch controller:=pid
+roslaunch hofa_mpc_ros simulation.launch controller:=hofa_mpc
+roslaunch hofa_mpc_ros simulation.launch controller:=hofa_policy \
+  policy_checkpoint:=/home/bricsbot/catkin_ws/results/hofa_policy/train_v1_epoch500/best.pt \
+  policy_device:=cpu
+```
+
+另一个终端启动 RViz：
+
+```bash
+source /home/bricsbot/catkin_ws/scripts/setup_stonefish_ros.sh
+roslaunch aquaflow_stonefish visualization.launch vehicle_model:=bricsbot
+```
+
+使用 RViz 的 `2D Nav Goal` 选择目标。`simulation.launch` 已包含
+`teacher.launch`，无需重复启动。策略模式必须指定已有 checkpoint，并使用
+能够同时导入 ROS Noetic 和 PyTorch 的 `oceangym` Python 环境。
+上述 checkpoint 已有无障碍路线测试记录；RViz 临时目标与随机障碍场景的
+跟踪表现仍需实际验证。
+
+## 自动记录实验
+
 运行一次 BricsBot + Stonefish + HOFA-MPC 实验，并自动保存结果：
 
 ```bash
@@ -44,6 +90,28 @@ rosrun hofa_mpc_ros run_mpc_experiment.py --no-launch
 ```
 
 脚本会保存 `odometry.csv`、`controller_status.csv`、`generalized_force.csv`、`pwm.csv`、`mpc_reference_window.csv`、`evaluation_reference.csv`、`global_reference_path.csv`、`metrics.json`、`summary.txt` 和 `runtime_config.json`，并在安装了 matplotlib 时生成 `tracking_xy.png`、`tracking_errors.png`、`speed_tracking.png` 和 `control_wrench.png`。默认还会保存 `topics.bag`。
+
+急弯测试脚本 `run_tracking_experiment.py` 也会在每个
+`results/tracking_sharp_turns/run_*/plots/` 下自动生成 PNG/PDF 图：实际路径、横向/航向/角速度误差、速度、广义力与 PWM，以及控制器诊断。已有运行记录可以离线画图，不需要 ROS 或 Stonefish：
+
+```bash
+PYTHONPATH=src/hofa_mpc_ros/src \
+/home/bricsbot/miniconda3/envs/oceangym/bin/python \
+  src/hofa_mpc_ros/scripts/plot_tracking_results.py \
+  --run-dir results/tracking_sharp_turns/run_YYYYMMDD_HHMMSS
+```
+
+同一条路径的多个后端可以叠加比较：
+
+```bash
+PYTHONPATH=src/hofa_mpc_ros/src \
+/home/bricsbot/miniconda3/envs/oceangym/bin/python \
+  src/hofa_mpc_ros/scripts/plot_tracking_results.py \
+  --run-dir results/hofa_policy/policy_comparison/baseline_bc/run_xxx \
+  --run-dir results/hofa_policy/policy_comparison/dagger/run_xxx \
+  --label BC --label DAgger \
+  --output-dir results/hofa_policy/policy_comparison/plots
+```
 
 评测参考由 `hofa_mpc_ros.arc_profile.build_arc_profile` 用全局路径和 `/reference_processor` 的实际限幅参数**离线重算**，得到一份绝对计划表（`evaluation_reference = global_path_speed_profile`）。这与控制器所用的是同一个剖面函数，但不依赖控制器的输出。
 

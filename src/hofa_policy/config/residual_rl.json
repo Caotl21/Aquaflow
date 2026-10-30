@@ -1,0 +1,48 @@
+{
+  "schema": "hofa_residual_rl_v1",
+  "baseline_checkpoint": "results/hofa_policy/train_dagger_v1/best.pt",
+  "bridge_executable": "artifacts/hofa_rl_native_hydrocore/hofa_stonefish_step",
+  "scenario": "src/aquaflow_stonefish/scenarios/aquaflow_empty_pool_control.scn",
+  "data_dir": "src/aquaflow_stonefish/data",
+  "physics_hz": 100,
+  "control_dt_s": 0.1,
+  "goal_depth": 1.0,
+  "settle_s": 2.0,
+  "episode_timeout_s": 120.0,
+  "routes": ["right_angle", "hairpin", "switchback"],
+  "randomize_train_routes": true,
+  "residual_limit": [1.0, 0.4, 0.08],
+  "residual_slew_per_step": [0.3, 0.15, 0.025],
+  "profile": {
+    "max_speed": 0.2,
+    "max_yaw_rate": 0.5,
+    "max_yaw_accel_radps2": 0.25,
+    "max_accel_mps2": 0.12,
+    "max_decel_mps2": 0.18,
+    "yaw_smoothing_window": 5,
+    "yaw_accel_reserve_ratio": 0.2
+  },
+  "reward": {
+    "progress": 5.0,
+    "cross_track": 2.0,
+    "yaw": 1.0,
+    "yaw_rate": 0.3,
+    "lag": 0.2,
+    "effort": 0.03,
+    "smooth": 0.02,
+    "time": 0.05,
+    "success": 20.0,
+    "failure": 20.0
+  },
+  "training": {
+    "learning_rate": 0.0003,
+    "buffer_size": 200000,
+    "learning_starts": 2000,
+    "batch_size": 256,
+    "gamma": 0.99,
+    "tau": 0.005,
+    "net_arch": [128, 128],
+    "td3_noise_std": 0.1,
+    "sac_ent_coef": "auto_0.02"
+  }
+}

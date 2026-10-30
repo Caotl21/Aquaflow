@@ -1,11 +1,12 @@
-"""Opt-in timestamped start barrier and near-level experimental depth hold."""
+"""Opt-in start barrier and near-level depth hold for experiments or manual use."""
 import rospy
 from std_msgs.msg import Time
 from nav_msgs.msg import Odometry
 
 class ExperimentGate:
-    def __init__(self, role, depth_hold=False):
+    def __init__(self, role, depth_hold=False, continuous_depth_hold=False):
         self.topic = rospy.get_param('~experiment_start_topic', '')
+        self.depth_hold_enabled = depth_hold and (bool(self.topic) or continuous_depth_hold)
         self.start_at = None
         self.odom = None
         self.integral = 0.0
@@ -21,9 +22,9 @@ class ExperimentGate:
         if self.topic:
             self.ack = rospy.Publisher(self.topic + '/' + role + '_ack', Time, queue_size=1, latch=True)
             self.sub = rospy.Subscriber(self.topic, Time, self._start, queue_size=1)
-            if depth_hold:
-                vehicle = rospy.get_param('~vehicle_name', 'bricsbot')
-                self.odom_sub = rospy.Subscriber('/' + vehicle + '/odometry', Odometry, self._odom, queue_size=1)
+        if self.depth_hold_enabled:
+            vehicle = rospy.get_param('~vehicle_name', 'bricsbot')
+            self.odom_sub = rospy.Subscriber('/' + vehicle + '/odometry', Odometry, self._odom, queue_size=1)
 
     def _start(self, msg):
         value = msg.data.to_sec()
@@ -45,7 +46,7 @@ class ExperimentGate:
         self.odom = msg
 
     def depth_force(self):
-        if not self.topic or self.odom is None:
+        if not self.depth_hold_enabled or self.odom is None:
             return 0.0
         msg = self.odom
         stamp = msg.header.stamp.to_sec()

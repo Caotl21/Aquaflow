@@ -18,6 +18,64 @@ def wrap_to_pi(angle):
     return math.atan2(math.sin(angle), math.cos(angle))
 
 
+def project_to_polyline(x, y, profile, arc_hint=None,
+                        backward_window_m=0.3, forward_window_m=0.6):
+    """Project one position onto a path, optionally preserving arc continuity.
+
+    When ``arc_hint`` is supplied, only segments overlapping the local arc
+    window are inspected.  This matters for self-overlapping routes: a global
+    nearest-point search can select an earlier branch of a hairpin even when
+    the vehicle is already on the return branch.
+    """
+    path_x = np.asarray(profile["x"], dtype=float)
+    path_y = np.asarray(profile["y"], dtype=float)
+    path_s = np.asarray(profile["s"], dtype=float)
+    if len(path_x) < 2:
+        return (float(arc_hint or 0.0), float("inf"), 0.0)
+    best = (float(arc_hint or 0.0), float("inf"), 0.0)
+    if arc_hint is None:
+        first_segment, last_segment = 0, len(path_x) - 2
+        lower_s, upper_s = path_s[0], path_s[-1]
+    else:
+        lower_s = max(float(path_s[0]), float(arc_hint) - backward_window_m)
+        upper_s = min(float(path_s[-1]), float(arc_hint) + forward_window_m)
+        # Include the segment on either side of a boundary vertex.  The
+        # resulting slice is local in arc length, rather than O(N) in route
+        # samples as a global search would.
+        first_segment = max(
+            0, int(np.searchsorted(path_s, lower_s, side="right")) - 1)
+        last_segment = min(
+            len(path_x) - 2,
+            int(np.searchsorted(path_s, upper_s, side="left")))
+    for index in range(first_segment, last_segment + 1):
+        dx = path_x[index + 1] - path_x[index]
+        dy = path_y[index + 1] - path_y[index]
+        length_sq = dx * dx + dy * dy
+        if length_sq <= 1.0e-12:
+            continue
+        segment_start, segment_end = path_s[index:index + 2]
+        segment_lower_s = max(lower_s, segment_start)
+        segment_upper_s = min(upper_s, segment_end)
+        if segment_upper_s < segment_lower_s:
+            continue
+        segment_length = segment_end - segment_start
+        if segment_length <= 1.0e-12:
+            continue
+        lower_ratio = (segment_lower_s - segment_start) / segment_length
+        upper_ratio = (segment_upper_s - segment_start) / segment_length
+        t = ((x - path_x[index]) * dx + (y - path_y[index]) * dy) / length_sq
+        t = max(lower_ratio, min(upper_ratio, t))
+        px = path_x[index] + t * dx
+        py = path_y[index] + t * dy
+        error_x, error_y = x - px, y - py
+        distance = math.hypot(error_x, error_y)
+        if distance < best[1]:
+            signed = (dx * error_y - dy * error_x) / math.sqrt(length_sq)
+            arc = segment_start + t * (segment_end - segment_start)
+            best = (float(arc), float(distance), float(signed))
+    return best
+
+
 def smooth_by_arc_length(s, values, window):
     """Smooth an unwrapped path signal on a uniform arc grid."""
     if len(values) < 3 or window <= 1 or s[-1] - s[0] < 1e-9:
@@ -94,6 +152,11 @@ def build_arc_profile(x, y, z=None, max_speed=0.2, max_yaw_rate=0.5,
         s[i] = s[i - 1] + math.hypot(x[i] - x[i - 1], y[i] - y[i - 1])
     total_length = s[-1]
 
+    # Unwrap before smoothing.  Averaging +pi and -pi directly turns a
+    # physically continuous heading into a false 0-radian heading at a
+    # reverse-side corner, which then corrupts curvature, speed, and yaw-rate
+    # references for every downstream controller.
+    yaw = np.unwrap(yaw)
     # Smooth the unwrapped tangent in arc-length coordinates.  Filtering yaw
     # as a function of s keeps the reference geometrically tied to the route
     # and avoids noisy curvature spikes from point spacing.
