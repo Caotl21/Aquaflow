@@ -1,0 +1,179 @@
+<?xml version="1.0"?>
+<!--
+  Open seabed asset preview for the future 96 m MAPF course.
+
+  Coordinate convention: Stonefish NED. The surface is z=0 and the seabed
+  is z=12 m. This scene checks the U0env assets with one BricsBot only;
+  it is not a MAPF or controller scenario.
+-->
+<scenario>
+  <environment>
+    <ned latitude="56.136459" longitude="-2.706819"/>
+    <ocean>
+      <water density="1031.0" jerlov="0.15"/>
+      <waves height="0.0"/>
+      <particles enabled="false"/>
+      <current type="uniform">
+        <velocity xyz="0.0 0.0 0.0"/>
+      </current>
+    </ocean>
+    <atmosphere>
+      <sun azimuth="45.0" elevation="60.0"/>
+    </atmosphere>
+  </environment>
+
+  <materials>
+    <material name="Neutral" density="1000.0" restitution="0.1"/>
+    <material name="Rock" density="3000.0" restitution="0.2"/>
+    <material name="Fiberglass" density="1500.0" restitution="0.3"/>
+    <material name="Aluminium" density="2710.0" restitution="0.5"/>
+    <material name="Steel" density="7850.0" restitution="0.5"/>
+    <friction_table>
+      <friction material1="Neutral" material2="Neutral" static="0.5" dynamic="0.2"/>
+      <friction material1="Neutral" material2="Rock" static="0.2" dynamic="0.1"/>
+      <friction material1="Neutral" material2="Fiberglass" static="0.5" dynamic="0.2"/>
+      <friction material1="Neutral" material2="Aluminium" static="0.1" dynamic="0.02"/>
+      <friction material1="Rock" material2="Rock" static="0.9" dynamic="0.7"/>
+      <friction material1="Rock" material2="Fiberglass" static="0.6" dynamic="0.4"/>
+      <friction material1="Rock" material2="Aluminium" static="0.6" dynamic="0.3"/>
+      <friction material1="Fiberglass" material2="Fiberglass" static="0.5" dynamic="0.2"/>
+      <friction material1="Fiberglass" material2="Aluminium" static="0.5" dynamic="0.2"/>
+      <friction material1="Aluminium" material2="Aluminium" static="0.8" dynamic="0.5"/>
+    </friction_table>
+  </materials>
+
+  <looks>
+    <!-- Names used by the included BricsBot description. -->
+    <look name="black" gray="0.05" roughness="0.2"/>
+    <look name="yellow" rgb="1.0 0.9 0.0" roughness="0.3"/>
+    <look name="gray" gray="0.5" roughness="0.4" metalness="0.5"/>
+
+    <look name="seabed_sand" rgb="0.85 0.82 0.72" roughness="0.95" metalness="0.0" texture="SoilBeach0078_1_350.jpg"/>
+    <look name="pipe_surface" rgb="0.7 0.7 0.7" roughness="0.6" metalness="0.3" texture="u0_assets/pipe/pipe.png"/>
+    <look name="pipestri_surface" rgb="0.7 0.7 0.7" roughness="0.6" metalness="0.3" texture="u0_assets/pipestri/pipestri.png"/>
+    <look name="container_surface" rgb="0.7 0.7 0.7" roughness="0.6" metalness="0.3" texture="u0_assets/container/container0.png"/>
+    <look name="factory_base_surface" rgb="0.7 0.7 0.7" roughness="0.6" metalness="0.3" texture="u0_assets/factory/base/base.png"/>
+    <look name="factory_frame_surface" rgb="0.7 0.7 0.7" roughness="0.6" metalness="0.3" texture="u0_assets/factory/frame/frame.png"/>
+    <look name="factory_platform_surface" rgb="0.7 0.7 0.7" roughness="0.6" metalness="0.3" texture="u0_assets/factory/platform/platform.png"/>
+    <look name="factory_top_surface" rgb="0.7 0.7 0.7" roughness="0.6" metalness="0.3" texture="u0_assets/factory/top/top.png"/>
+    <look name="charge_surface" rgb="0.7 0.7 0.7" roughness="0.6" metalness="0.3" texture="u0_assets/charge/charge0.png"/>
+    <look name="solar_surface" rgb="0.7 0.7 0.7" roughness="0.6" metalness="0.3" texture="u0_assets/solar_panel/solar_panel0.png"/>
+    <look name="tower_surface" rgb="0.7 0.7 0.7" roughness="0.6" metalness="0.3" texture="u0_assets/tower/tower0.png"/>
+    <look name="signal_surface" rgb="0.7 0.7 0.7" roughness="0.6" metalness="0.3" texture="u0_assets/signal_tower/signal_tower0.png"/>
+    <look name="coral_surface" rgb="0.7 0.7 0.7" roughness="0.7" texture="u0_assets/coral/coral.png"/>
+    <look name="grass_surface" rgb="0.7 0.7 0.7" roughness="0.8" texture="u0_assets/grass/grass.png"/>
+    <look name="stone_surface" rgb="0.7 0.7 0.7" roughness="0.9" texture="u0_assets/stone/stone.png"/>
+    <look name="sticks_surface" rgb="0.7 0.7 0.7" roughness="0.9" texture="u0_assets/sticks/sticks.png"/>
+  </looks>
+
+  <!-- Open, textured seabed at 12 m depth. Solid contact surface with a
+       sand appearance; this does not simulate deformable sediment.
+       The future MAPF boundary is a planning boundary, not a pool wall. -->
+  <static name="SandySeabed" type="plane">
+    <material name="Rock"/>
+    <look name="seabed_sand" uv_scale="0.25"/>
+    <world_transform xyz="0.0 0.0 12.0" rpy="0.0 0.0 0.0"/>
+  </static>
+
+  <!-- Representative long pipes. U0env model orientation follows its scenes. -->
+  <static name="PipeLong" type="model" physics="submerged">
+    <physical>
+      <mesh filename="u0_assets/pipestri/pipestri.obj" scale="1.0"/>
+      <origin rpy="3.14 0.0 0.0" xyz="0.0 0.0 0.0"/>
+    </physical>
+    <material name="Rock"/>
+    <look name="pipestri_surface"/>
+    <world_transform xyz="-3.0 -11.0 11.0" rpy="0.0 0.0 0.0"/>
+  </static>
+  <static name="PipeAssembly" type="model" physics="submerged">
+    <physical>
+      <mesh filename="u0_assets/pipe/pipe.obj" scale="1.0"/>
+      <origin rpy="3.14 0.0 0.0" xyz="0.0 0.0 0.0"/>
+    </physical>
+    <material name="Rock"/>
+    <look name="pipe_surface"/>
+    <world_transform xyz="-13.0 7.0 10.9" rpy="0.0 0.0 0.5"/>
+  </static>
+
+  <!-- Industrial frame assembled from the U0env factory assets. -->
+  <static name="FactoryBase" type="model" physics="submerged">
+    <physical><mesh filename="u0_assets/factory/base/base.obj" scale="1.0"/><origin rpy="3.14 0.0 0.0" xyz="0.0 0.0 0.0"/></physical>
+    <material name="Rock"/><look name="factory_base_surface"/>
+    <world_transform xyz="8.0 -2.0 10.8" rpy="0.0 0.0 0.0"/>
+  </static>
+  <static name="FactoryFrame" type="model" physics="submerged">
+    <physical><mesh filename="u0_assets/factory/frame/frame.obj" scale="1.0"/><origin rpy="3.14 0.0 0.0" xyz="0.0 0.0 0.0"/></physical>
+    <material name="Rock"/><look name="factory_frame_surface"/>
+    <world_transform xyz="8.0 -2.0 10.8" rpy="0.0 0.0 0.0"/>
+  </static>
+  <static name="FactoryPlatform" type="model" physics="submerged">
+    <physical><mesh filename="u0_assets/factory/platform/platform.obj" scale="1.0"/><origin rpy="3.14 0.0 0.0" xyz="0.0 0.0 0.0"/></physical>
+    <material name="Rock"/><look name="factory_platform_surface"/>
+    <world_transform xyz="8.0 -2.0 10.8" rpy="0.0 0.0 0.0"/>
+  </static>
+  <static name="FactoryTop" type="model" physics="submerged">
+    <physical><mesh filename="u0_assets/factory/top/top.obj" scale="1.0"/><origin rpy="3.14 0.0 0.0" xyz="0.0 0.0 0.0"/></physical>
+    <material name="Rock"/><look name="factory_top_surface"/>
+    <world_transform xyz="8.0 -2.0 10.8" rpy="0.0 0.0 0.0"/>
+  </static>
+
+  <static name="ContainerA" type="model" physics="submerged">
+    <physical><mesh filename="u0_assets/container/container0.obj" scale="1.0"/><origin rpy="3.14 0.0 0.0" xyz="0.0 0.0 0.0"/></physical>
+    <material name="Rock"/><look name="container_surface"/>
+    <world_transform xyz="-12.0 -6.0 10.8" rpy="0.0 0.0 0.0"/>
+  </static>
+  <static name="ContainerB" type="model" physics="submerged">
+    <physical><mesh filename="u0_assets/container/container1.obj" scale="0.6"/><origin rpy="3.14 0.0 0.0" xyz="0.0 0.0 0.0"/></physical>
+    <material name="Rock"/><look name="container_surface"/>
+    <world_transform xyz="-12.0 0.0 10.8" rpy="0.0 0.0 0.4"/>
+  </static>
+
+  <static name="ChargeStation" type="model" physics="submerged">
+    <physical><mesh filename="u0_assets/charge/charge0.obj" scale="1.5"/><origin rpy="3.14 0.0 0.0" xyz="0.0 0.0 0.0"/></physical>
+    <material name="Rock"/><look name="charge_surface"/>
+    <world_transform xyz="-16.0 -13.0 11.2" rpy="0.0 0.0 0.0"/>
+  </static>
+  <static name="SolarPanel" type="model" physics="submerged">
+    <physical><mesh filename="u0_assets/solar_panel/solar_panel0.obj" scale="0.8"/><origin rpy="3.14 0.0 0.0" xyz="0.0 0.0 0.0"/></physical>
+    <material name="Rock"/><look name="solar_surface"/>
+    <world_transform xyz="-10.0 -13.0 11.2" rpy="0.0 0.0 0.0"/>
+  </static>
+  <static name="Tower" type="model" physics="submerged">
+    <physical><mesh filename="u0_assets/tower/tower0.obj" scale="1.0"/><origin rpy="3.14 0.0 0.0" xyz="0.0 0.0 0.0"/></physical>
+    <material name="Rock"/><look name="tower_surface"/>
+    <world_transform xyz="-2.0 16.0 10.8" rpy="0.0 0.0 0.0"/>
+  </static>
+  <static name="SignalTower" type="model" physics="submerged">
+    <physical><mesh filename="u0_assets/signal_tower/signal_tower0.obj" scale="2.4"/><origin rpy="3.14 0.0 0.0" xyz="0.0 0.0 0.0"/></physical>
+    <material name="Rock"/><look name="signal_surface"/>
+    <world_transform xyz="8.0 16.0 10.8" rpy="0.0 0.0 0.0"/>
+  </static>
+
+  <!-- Natural clutter; these are intentionally sparse in the preview. -->
+  <static name="Coral" type="model" physics="submerged">
+    <physical><mesh filename="u0_assets/coral/coral.obj" scale="2.0"/><origin rpy="3.14 0.0 0.0" xyz="0.0 0.0 0.0"/></physical>
+    <material name="Rock"/><look name="coral_surface"/>
+    <world_transform xyz="-4.0 15.0 11.3" rpy="0.0 0.0 0.3"/>
+  </static>
+  <static name="Grass" type="model" physics="submerged">
+    <physical><mesh filename="u0_assets/grass/grass.obj" scale="2.0"/><origin rpy="3.14 0.0 0.0" xyz="0.0 0.0 0.0"/></physical>
+    <material name="Rock"/><look name="grass_surface"/>
+    <world_transform xyz="-7.0 15.0 11.3" rpy="0.0 0.0 1.0"/>
+  </static>
+  <static name="Stone" type="model" physics="submerged">
+    <physical><mesh filename="u0_assets/stone/stone.obj" scale="3.0"/><origin rpy="3.14 0.0 0.0" xyz="0.0 0.0 0.0"/></physical>
+    <material name="Rock"/><look name="stone_surface"/>
+    <world_transform xyz="-9.0 10.0 11.3" rpy="0.0 0.0 0.6"/>
+  </static>
+  <static name="Sticks" type="model" physics="submerged">
+    <physical><mesh filename="u0_assets/sticks/sticks0.obj" scale="1.0"/><origin rpy="3.14 0.0 0.0" xyz="0.0 0.0 0.0"/></physical>
+    <material name="Rock"/><look name="sticks_surface"/>
+    <world_transform xyz="-5.0 10.0 11.3" rpy="0.0 0.0 0.8"/>
+  </static>
+
+  <include file="$(find aquaflow_stonefish)/scenarios/bricsbot_reference.scn">
+    <arg name="vehicle_name" value="bricsbot"/>
+    <arg name="position" value="-18.0 -18.0 6.0"/>
+    <arg name="orientation" value="0.0 0.0 0.0"/>
+  </include>
+</scenario>

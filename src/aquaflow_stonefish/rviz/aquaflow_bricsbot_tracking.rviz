@@ -6,19 +6,28 @@ Panels:
       Expanded:
         - /BricsBot Model1
       Splitter Ratio: 0.5
-    Tree Height: 520
+    Tree Height: 369
+Preferences:
+  PromptSaveOnExit: true
+Toolbars:
+  toolButtonStyle: 2
 Visualization Manager:
   Class: ""
   Displays:
-    - Alpha: 0.35
+    - Alpha: 0.3499999940395355
       Cell Size: 1
       Class: rviz/Grid
       Color: 120; 120; 120
       Enabled: true
       Line Style:
-        Line Width: 0.03
+        Line Width: 0.029999999329447746
         Value: Lines
       Name: World Grid
+      Normal Cell Count: 0
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
       Plane: XY
       Plane Cell Count: 20
       Reference Frame: <Fixed Frame>
@@ -26,34 +35,58 @@ Visualization Manager:
     - Class: rviz/TF
       Enabled: true
       Frame Timeout: 15
-      Marker Scale: 0.35
+      Frames:
+        All Enabled: true
+        bricsbot/base_link:
+          Value: true
+        bricsbot/camera_front:
+          Value: true
+        world_ned:
+          Value: true
+      Marker Alpha: 1
+      Marker Scale: 0.3499999940395355
       Name: TF
       Show Arrows: true
       Show Axes: true
       Show Names: true
+      Tree:
+        world_ned:
+          bricsbot/base_link:
+            bricsbot/camera_front:
+              {}
+      Update Interval: 0
       Value: true
     - Alpha: 1
       Class: rviz/RobotModel
       Collision Enabled: false
-      Description Source: Parameter
       Enabled: true
       Links:
         All Links Enabled: true
+        Expand Joint Details: false
+        Expand Link Details: false
         Expand Tree: false
+        Link Tree Style: Links in Alphabetic Order
+        base_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
       Name: BricsBot Model
       Robot Description: robot_description
       TF Prefix: bricsbot
       Update Interval: 0
       Value: true
       Visual Enabled: true
-    - Alpha: 0.8
+    - Alpha: 0.800000011920929
       Class: rviz/Map
       Color Scheme: costmap
       Draw Behind: true
       Enabled: false
       Name: Inflated Costmap
       Topic: /aquaflow/esdf_costmap
-      Value: true
+      Unreliable: false
+      Use Timestamp: false
+      Value: false
     - Class: rviz/MarkerArray
       Enabled: true
       Marker Topic: /aquaflow/privileged_map
@@ -68,30 +101,72 @@ Visualization Manager:
       Class: rviz/Path
       Color: 255; 0; 255
       Enabled: true
+      Head Diameter: 0.30000001192092896
+      Head Length: 0.20000000298023224
+      Length: 0.30000001192092896
       Line Style: Lines
-      Line Width: 0.05
+      Line Width: 0.05000000074505806
       Name: Global Teacher Path
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+      Pose Color: 255; 85; 255
+      Pose Style: None
+      Queue Size: 10
+      Radius: 0.029999999329447746
+      Shaft Diameter: 0.10000000149011612
+      Shaft Length: 0.10000000149011612
       Topic: /aquaflow/teacher_global_path
+      Unreliable: false
       Value: true
     - Alpha: 1
       Buffer Length: 1
       Class: rviz/Path
       Color: 0; 120; 255
       Enabled: true
+      Head Diameter: 0.30000001192092896
+      Head Length: 0.20000000298023224
+      Length: 0.30000001192092896
       Line Style: Lines
-      Line Width: 0.08
+      Line Width: 0.07999999821186066
       Name: Local Teacher Path
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+      Pose Color: 255; 85; 255
+      Pose Style: None
+      Queue Size: 10
+      Radius: 0.029999999329447746
+      Shaft Diameter: 0.10000000149011612
+      Shaft Length: 0.10000000149011612
       Topic: /aquaflow/teacher_reference
+      Unreliable: false
       Value: true
     - Alpha: 1
       Buffer Length: 1
       Class: rviz/Path
       Color: 255; 0; 0
       Enabled: true
+      Head Diameter: 0.30000001192092896
+      Head Length: 0.20000000298023224
+      Length: 0.30000001192092896
       Line Style: Lines
-      Line Width: 0.05
+      Line Width: 0.05000000074505806
       Name: Actual Path
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+      Pose Color: 255; 85; 255
+      Pose Style: None
+      Queue Size: 10
+      Radius: 0.029999999329447746
+      Shaft Diameter: 0.10000000149011612
+      Shaft Length: 0.10000000149011612
       Topic: /aquaflow/actual_path
+      Unreliable: false
       Value: true
     - Class: rviz/MarkerArray
       Enabled: true
@@ -106,7 +181,7 @@ Visualization Manager:
       Marker Topic: /aquaflow/tracking_error_markers
       Name: Tracking XY and Yaw Error
       Namespaces:
-        aquaflow_tracking_error: true
+        {}
       Queue Size: 10
       Value: false
     - Class: rviz/MarkerArray
@@ -114,15 +189,17 @@ Visualization Manager:
       Marker Topic: /aquaflow/tracking_target_markers
       Name: Tracking Target Points
       Namespaces:
-        aquaflow_tracking_target: true
+        {}
       Queue Size: 10
       Value: false
-    - Alpha: 1
-      Class: rviz/MarkerArray
+    - Class: rviz/MarkerArray
       Enabled: false
+      Marker Topic: visualization_marker_array
       Name: Global Samples
-      Topic: /aquaflow/teacher_global_points
-      Value: true
+      Namespaces:
+        {}
+      Queue Size: 100
+      Value: false
     - Class: rviz/MarkerArray
       Enabled: true
       Marker Topic: /aquaflow/actual_path_points
@@ -146,6 +223,7 @@ Visualization Manager:
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
+    Default Light: true
     Fixed Frame: world_ned
     Frame Rate: 30
   Name: root
@@ -158,16 +236,35 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 13
-      Invert Z Axis: true
+      Distance: 7.851052761077881
+      Enable Stereo Rendering:
+        Stereo Eye Separation: 0.05999999865889549
+        Stereo Focal Distance: 1
+        Swap Stereo Eyes: false
+        Value: false
+      Field of View: 0.7853981852531433
       Focal Point:
-        X: 0
-        Y: 0
-        Z: 0
-      Pitch: 1.05
-      Yaw: 0.78
+        X: -0.2486593872308731
+        Y: -0.5592091083526611
+        Z: 0.6689395904541016
+      Focal Shape Fixed Size: true
+      Focal Shape Size: 0.05000000074505806
+      Invert Z Axis: true
+      Name: Current View
+      Near Clip Distance: 0.009999999776482582
+      Pitch: 1.5697963237762451
+      Target Frame: <Fixed Frame>
+      Yaw: 0.6350001096725464
+    Saved: ~
 Window Geometry:
-  Height: 900
-  Width: 1450
+  Displays:
+    collapsed: false
   Front Camera:
     collapsed: false
+  Height: 900
+  Hide Left Dock: false
+  Hide Right Dock: false
+  QMainWindow State: 000000ff00000000fd0000000100000000000001560000032efc0200000002fb0000001800460072006f006e0074002000430061006d006500720061010000003b0000012e0000001600fffffffb000000100044006900730070006c006100790073010000016f000001fa000000c700ffffff0000044e0000032e00000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
+  Width: 1450
+  X: 116
+  Y: 82

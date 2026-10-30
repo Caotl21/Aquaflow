@@ -1,0 +1,111 @@
+{
+  "status": "reached",
+  "seed": 4,
+  "steps": 83,
+  "simulated_time_s": 29.049999999999997,
+  "wall_time_s": 2.1202895750000152,
+  "goal_distance_m": 0.28686299291174644,
+  "path_length_m": 9.911999999999997,
+  "minimum_true_surface_clearance_m": 0.10349986953091778,
+  "obstacle_count": 12,
+  "discovered_count": 12,
+  "straight_reference_collision_count": 3,
+  "stops": 0,
+  "max_selected_known_map_risk": 0.06666666666666667,
+  "config": {
+    "seed": 4,
+    "particles": 1000,
+    "map_samples": 180,
+    "dt": 0.35,
+    "horizon": 2.8,
+    "max_steps": 220,
+    "robot_radius": 0.18,
+    "safety_margin": 0.1,
+    "risk_threshold": 0.08,
+    "fov_deg": 140.0,
+    "sensor_range": 12.0,
+    "noise_beta_deg": 0.6,
+    "noise_theta_deg": 0.35,
+    "goal_tolerance": 0.3,
+    "occlusion": true,
+    "corridor_half_width": 2.5
+  },
+  "target_errors": [
+    {
+      "id": "0",
+      "first_seen_step": 0,
+      "center_error_m": 0.011468181594404998,
+      "diameter_error_m": 0.004759481161795254
+    },
+    {
+      "id": "3",
+      "first_seen_step": 0,
+      "center_error_m": 0.01537670901701994,
+      "diameter_error_m": 0.003070534215047882
+    },
+    {
+      "id": "5",
+      "first_seen_step": 0,
+      "center_error_m": 0.027139798892633182,
+      "diameter_error_m": 0.00866840433307925
+    },
+    {
+      "id": "6",
+      "first_seen_step": 0,
+      "center_error_m": 0.00539453159215649,
+      "diameter_error_m": 0.00471901756769455
+    },
+    {
+      "id": "10",
+      "first_seen_step": 0,
+      "center_error_m": 0.036776859738391496,
+      "diameter_error_m": 0.008654944068722081
+    },
+    {
+      "id": "11",
+      "first_seen_step": 0,
+      "center_error_m": 0.0035171068610241546,
+      "diameter_error_m": 0.00017504876383767076
+    },
+    {
+      "id": "4",
+      "first_seen_step": 15,
+      "center_error_m": 0.009904353758382159,
+      "diameter_error_m": 0.0019023731884350026
+    },
+    {
+      "id": "1",
+      "first_seen_step": 19,
+      "center_error_m": 0.01389510721143306,
+      "diameter_error_m": 0.006689577743609454
+    },
+    {
+      "id": "9",
+      "first_seen_step": 20,
+      "center_error_m": 0.01007815922993264,
+      "diameter_error_m": 0.005176429892136292
+    },
+    {
+      "id": "2",
+      "first_seen_step": 22,
+      "center_error_m": 0.017346417145559637,
+      "diameter_error_m": 0.008465248923879565
+    },
+    {
+      "id": "8",
+      "first_seen_step": 40,
+      "center_error_m": 0.016595519347614412,
+      "diameter_error_m": 0.008148121616399107
+    },
+    {
+      "id": "7",
+      "first_seen_step": 46,
+      "center_error_m": 0.0694264518070082,
+      "diameter_error_m": 0.024597246761395075
+    }
+  ],
+  "stop_reasons": {
+    "no_feasible": 0,
+    "cost_prefers_hold": 0
+  }
+}

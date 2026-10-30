@@ -1,0 +1,6 @@
+Source repository: https://github.com/VincentGu2000/u0env
+Source commit:
+3f4b8409a9942935df1521fac2d905b65a2d36e2
+Asset source: ros_ws/src/stonefish_bluerov2/data
+Prepared for Stonefish 1.6: removed missing mtllib declarations from imported OBJ files; geometry, normals, UVs, and source textures are unchanged.
+Stonefish rapidobj compatibility correction: removed unresolved usemtl records as well as mtllib records. All other OBJ bytes are preserved; preview appearance is assigned by SCN look/texture. Original MTL materials are not reconstructed.

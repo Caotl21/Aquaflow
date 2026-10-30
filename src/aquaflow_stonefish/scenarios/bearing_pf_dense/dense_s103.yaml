@@ -1,0 +1,7 @@
+# truth_angle / segmentation parameters for dense_s103.scn.
+# Segmentation IDs assume the P1 pattern (pillars after floor/walls, step 2);
+# verify with inspect_segmentation_labels.py before using segmentation mode.
+truth_pillars_xy_m: [[-1.255, -0.221], [2.851, 0.286], [-2.761, -0.197], [-3.324, 1.595], [-3.064, -2.200], [1.036, -0.782], [-0.155, 0.600], [-1.034, -1.605], [3.804, -1.604], [1.831, 1.874], [-1.930, 1.889], [1.050, 0.916], [2.143, -0.628], [2.786, -2.237], [3.393, 1.402]]
+truth_pillar_diameter_m: [0.355, 0.331, 0.317, 0.411, 0.303, 0.377, 0.373, 0.306, 0.368, 0.324, 0.518, 0.380, 0.357, 0.430, 0.560]
+truth_labels: [12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40]
+allowed_labels: [12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40]

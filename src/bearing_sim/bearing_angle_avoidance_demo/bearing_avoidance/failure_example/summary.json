@@ -1,0 +1,87 @@
+{
+  "status": "stalled",
+  "seed": 1,
+  "steps": 45,
+  "simulated_time_s": 15.749999999999998,
+  "wall_time_s": 0.9542845399998896,
+  "goal_distance_m": 7.111268784646419,
+  "path_length_m": 2.5620000000000003,
+  "minimum_true_surface_clearance_m": 0.1723086974340769,
+  "obstacle_count": 12,
+  "discovered_count": 8,
+  "straight_reference_collision_count": 3,
+  "stops": 18,
+  "max_selected_known_map_risk": 0.06666666666666667,
+  "config": {
+    "seed": 1,
+    "particles": 1000,
+    "map_samples": 180,
+    "dt": 0.35,
+    "horizon": 2.8,
+    "max_steps": 220,
+    "robot_radius": 0.18,
+    "safety_margin": 0.1,
+    "risk_threshold": 0.08,
+    "fov_deg": 140.0,
+    "sensor_range": 12.0,
+    "noise_beta_deg": 0.6,
+    "noise_theta_deg": 0.35,
+    "goal_tolerance": 0.3,
+    "occlusion": true,
+    "corridor_half_width": 2.5
+  },
+  "target_errors": [
+    {
+      "id": "0",
+      "first_seen_step": 0,
+      "center_error_m": 0.002932894954071325,
+      "diameter_error_m": 0.0007203158829182099
+    },
+    {
+      "id": "3",
+      "first_seen_step": 0,
+      "center_error_m": 0.10527306422870213,
+      "diameter_error_m": 0.005078891123120377
+    },
+    {
+      "id": "10",
+      "first_seen_step": 0,
+      "center_error_m": 0.0070530477841622904,
+      "diameter_error_m": 0.0018268335300976601
+    },
+    {
+      "id": "5",
+      "first_seen_step": 2,
+      "center_error_m": 0.004643639013962117,
+      "diameter_error_m": 0.0006080076380559074
+    },
+    {
+      "id": "9",
+      "first_seen_step": 4,
+      "center_error_m": 0.45837926683047026,
+      "diameter_error_m": 0.05907864392587753
+    },
+    {
+      "id": "1",
+      "first_seen_step": 15,
+      "center_error_m": 0.1267896961161557,
+      "diameter_error_m": 0.02120628433368943
+    },
+    {
+      "id": "11",
+      "first_seen_step": 20,
+      "center_error_m": 0.6384003766772055,
+      "diameter_error_m": 0.09043766184151247
+    },
+    {
+      "id": "7",
+      "first_seen_step": 27,
+      "center_error_m": 4.178700829527507,
+      "diameter_error_m": 0.41780105825105546
+    }
+  ],
+  "stop_reasons": {
+    "no_feasible": 0,
+    "cost_prefers_hold": 18
+  }
+}

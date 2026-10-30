@@ -1,0 +1,166 @@
+<?xml version="1.0"?>
+<launch>
+  <!-- P1: fixed black pillars + ideal Stonefish segmentation association. -->
+  <arg name="vehicle_name" default="bricsbot"/>
+  <arg name="scene" default="bearing_pf_pillars"/>
+  <arg name="scenario_path" default=""
+       doc="Optional .scn file overriding scene, e.g. scenarios/bearing_pf_dense/dense_s101.scn"/>
+  <arg name="truth_pillars_file" default=""
+       doc="YAML with truth_pillars_xy_m/truth_pillar_diameter_m/truth_labels for scenario_path (truth_angle/segmentation only)"/>
+  <arg name="sensor_mode" default="segmentation"
+       doc="segmentation = object-ID oracle; rgb = black-color components; truth_angle = privileged exact bearing/angular width"/>
+  <arg name="image_topic" default="/bricsbot/bearing_segmentation/image_raw"/>
+  <arg name="camera_info_topic" default="/bricsbot/bearing_segmentation/camera_info"/>
+  <arg name="planner_fov_deg" default="140.0"/>
+  <arg name="target_depth_m" default="1.0"/>
+  <arg name="headless" default="false"/>
+  <arg name="enable" default="false"
+       doc="Enable PID and thruster output; keep false for observation-only validation."/>
+  <arg name="motion_enabled" default="true"
+       doc="Allow horizontal PF planning motion; false keeps x/y/yaw fixed while depth control remains active."/>
+  <arg name="goal_x" default="5.0"/>
+  <arg name="goal_y" default="0.0"/>
+  <arg name="log_dir" default=""/>
+  <arg name="robot_radius_m" default="0.20"/>
+  <arg name="safety_margin_m" default="0.10"/>
+  <arg name="risk_threshold" default="0.08"/>
+  <arg name="truth_sensor_range_m" default="13.0"/>
+  <arg name="truth_occlusion" default="false"
+       doc="truth_angle only: hide occluded pillars and emit partial sectors like an image adapter."/>
+  <arg name="truth_noise_beta_deg" default="0.0"
+       doc="truth_angle only: Gaussian bearing noise; 0.6 matches the PF likelihood sigma."/>
+  <arg name="truth_noise_theta_deg" default="0.0"
+       doc="truth_angle only: Gaussian angular-width noise; 0.35 matches the PF likelihood sigma."/>
+  <arg name="estimate_history_points" default="80"/>
+  <arg name="shadow_compare" default="false"
+       doc="In truth_angle mode, compare segmentation in a separate diagnostic process"/>
+  <arg name="shadow_image_topic" default="/$(arg vehicle_name)/bearing_segmentation/image_raw"/>
+  <arg name="shadow_camera_info_topic" default="/$(arg vehicle_name)/bearing_segmentation/camera_info"/>
+  <arg name="shadow_max_pair_skew_s" default="0.05"/>
+  <arg name="shadow_max_interpolation_gap_s" default="0.10"/>
+  <!-- IDs are stable for the fixed P1 scene: 8 pillar entries are created
+       after the pool floor/walls. IDs 14 and 16 may be occluded initially. -->
+  <arg name="allowed_labels" default="[12,14,16,18,20,22,24,26]"
+       doc="P1 pillar object IDs; override after changing the scenario order."/>
+  <arg name="rviz" default="false"/>
+  <arg name="show_truth" default="$(eval arg('truth_pillars_file') != '' or arg('scenario_path') == '')"
+       doc="RViz only: draw truth pillars (truth_obstacle/truth_inflated). Needs truth_pillars_file for scenario_path scenes; the defaults are the P1 pillars."/>
+
+  <include file="$(find aquaflow_stonefish)/launch/aquaflow_pool.launch">
+    <arg name="scene" value="$(arg scene)"/>
+    <arg name="scenario_path" value="$(arg scenario_path)"/>
+    <arg name="vehicle_model" value="bricsbot"/>
+    <arg name="headless" value="$(arg headless)"/>
+  </include>
+
+  <node pkg="aquaflow_stonefish" type="bearing_pf_stonefish_node.py"
+        name="bearing_pf_stonefish" output="screen">
+    <param name="vehicle_name" value="$(arg vehicle_name)"/>
+    <param name="sensor_mode" value="$(arg sensor_mode)"/>
+    <param name="motion_enabled" value="$(arg motion_enabled)"/>
+    <param name="enabled" value="true"/>
+    <param name="image_topic" value="$(arg image_topic)"/>
+    <param name="camera_info_topic" value="$(arg camera_info_topic)"/>
+    <param name="odom_topic" value="/$(arg vehicle_name)/odometry"/>
+    <param name="goal_xy" value="[$(arg goal_x), $(arg goal_y)]"/>
+    <param name="target_depth_m" value="$(arg target_depth_m)"/>
+    <param name="log_dir" value="$(arg log_dir)"/>
+    <param name="camera_offset_xy_m" value="[0.20, 0.0]"/>
+    <param name="planner_fov_deg" value="$(arg planner_fov_deg)"/>
+    <param name="robot_radius_m" value="$(arg robot_radius_m)"/>
+    <param name="safety_margin_m" value="$(arg safety_margin_m)"/>
+    <param name="risk_threshold" value="$(arg risk_threshold)"/>
+    <param name="truth_sensor_range_m" value="$(arg truth_sensor_range_m)"/>
+    <param name="truth_occlusion" value="$(arg truth_occlusion)"/>
+    <param name="truth_noise_beta_deg" value="$(arg truth_noise_beta_deg)"/>
+    <param name="truth_noise_theta_deg" value="$(arg truth_noise_theta_deg)"/>
+    <param name="estimate_history_points" value="$(arg estimate_history_points)"/>
+    <rosparam param="truth_pillars_xy_m">[
+      [-2.4, 0.0], [0.0, 0.0], [2.4, 0.0], [-1.0, 1.45],
+      [1.0, -1.45], [3.5, 1.55], [3.7, -1.55], [-3.7, -1.55]
+    ]</rosparam>
+    <rosparam param="truth_pillar_diameter_m">[0.60, 0.56, 0.60, 0.48, 0.44, 0.40, 0.36, 0.32]</rosparam>
+    <rosparam param="truth_labels">[12, 14, 16, 18, 20, 22, 24, 26]</rosparam>
+    <param name="debug_ray_range_m" value="5.0"/>
+    <param name="debug_show_truth" value="$(arg show_truth)"/>
+    <param name="debug_particle_count" value="120"/>
+    <param name="debug_z_offset_m" value="0.08"/>
+    <rosparam param="diameter_prior_m">[0.05, 0.75]</rosparam>
+    <rosparam param="distance_prior_m">[0.55, 13.0]</rosparam>
+    <!-- <param> expands launch args; rosparam scalar parsing leaves the list
+         as YAML when possible, and the node also accepts the string form. -->
+    <param name="allowed_labels" value="$(arg allowed_labels)"/>
+    <param name="max_sensor_skew_s" value="0.15"/>
+    <param name="rgb_dark_max_value" value="80"/>
+    <param name="rgb_dark_channel_spread" value="60"/>
+    <param name="rgb_min_pixels" value="40"/>
+    <param name="rgb_min_height_px" value="12"/>
+    <param name="rgb_min_width_px" value="2"/>
+    <param name="rgb_band_half_height_px" value="24"/>
+    <param name="rgb_band_fill" value="0.6"/>
+    <param name="rgb_match_gate_min_deg" value="3.0"/>
+    <param name="rgb_match_gate_max_deg" value="10.0"/>
+    <param name="rgb_width_tolerance" value="0.4"/>
+    <!-- Loaded last so it overrides the P1 truth geometry above. -->
+    <rosparam if="$(eval arg('truth_pillars_file') != '')" command="load"
+              file="$(arg truth_pillars_file)"/>
+    <param name="rgb_min_new_width_deg" value="0.6"/>
+    <param name="rgb_min_new_edge_width_deg" value="2.0"/>
+    <param name="rgb_max_new_edge_width_deg" value="60.0"/>
+    <param name="rgb_confirm_hits" value="3"/>
+    <param name="rgb_tentative_timeout_s" value="2.0"/>
+    <param name="rgb_split_min_piece_px" value="5"/>
+    <param name="partial_edge_min_radius_m" value="0.15"/>
+    <param name="stuck_timeout_s" value="3.0"/>
+    <param name="stuck_hold_fraction" value="0.7"/>
+    <param name="stuck_max_progress_m" value="0.2"/>
+    <param name="recovery_backoff_speed_mps" value="0.10"/>
+  </node>
+
+  <!-- Diagnostics have no connection to the control/reference outputs. -->
+  <node if="$(eval arg('shadow_compare') and arg('sensor_mode') == 'truth_angle')"
+        pkg="aquaflow_stonefish" type="bearing_pf_shadow_node.py"
+        name="bearing_pf_shadow" output="screen">
+    <param name="source_namespace" value="/bearing_pf_stonefish"/>
+    <param name="scene" value="$(arg scene)"/>
+    <param name="log_dir" value="$(arg log_dir)"/>
+    <param name="image_topic" value="$(arg shadow_image_topic)"/>
+    <param name="camera_info_topic" value="$(arg shadow_camera_info_topic)"/>
+    <param name="max_pair_skew_s" value="$(arg shadow_max_pair_skew_s)"/>
+    <param name="max_interpolation_gap_s" value="$(arg shadow_max_interpolation_gap_s)"/>
+  </node>
+
+  <!-- Only the existing low-level tracker is started here. The planner is
+       the source of local_path/local_velocity; no privileged teacher runs. -->
+  <node pkg="aquaflow_stonefish" type="planar_pid_tracker.py"
+        name="bearing_pf_planar_pid" output="screen">
+    <rosparam command="load" file="$(find hofa_mpc_ros)/config/vehicle_sim.yaml"/>
+    <param name="vehicle_name" value="$(arg vehicle_name)"/>
+    <param name="enable" value="$(arg enable)"/>
+    <param name="control_mode" value="dual_loop"/>
+    <param name="reference_topic" value="/bearing_pf/local_path"/>
+    <param name="velocity_reference_topic" value="/bearing_pf/local_velocity"/>
+    <param name="require_velocity_reference" value="true"/>
+    <param name="kp_z" value="3.0"/>
+    <param name="kd_z" value="1.0"/>
+    <param name="ki_z" value="0.5"/>
+    <param name="z_integral_limit" value="5.0"/>
+    <param name="experiment_depth" value="$(arg target_depth_m)"/>
+  </node>
+
+  <node pkg="aquaflow_stonefish" type="brics6_thruster_allocator.py"
+        name="bearing_pf_brics6_thruster_allocator" output="screen">
+    <param name="vehicle_name" value="$(arg vehicle_name)"/>
+    <param name="enabled" value="$(arg enable)"/>
+  </node>
+
+  <node pkg="aquaflow_stonefish" type="actual_path_recorder.py"
+        name="bearing_pf_actual_path_recorder" output="screen">
+    <param name="vehicle_name" value="$(arg vehicle_name)"/>
+    <param name="output_topic" value="/bearing_pf/actual_path"/>
+  </node>
+
+  <node if="$(arg rviz)" pkg="rviz" type="rviz" name="bearing_pf_rviz"
+        output="screen"
+        args="-d $(find aquaflow_stonefish)/rviz/bearing_pf_debug.rviz"/>
+</launch>

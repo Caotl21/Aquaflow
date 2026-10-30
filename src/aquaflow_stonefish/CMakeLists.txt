@@ -174,6 +174,10 @@ catkin_install_python(PROGRAMS
   scripts/brics6_thruster_allocator.py
   scripts/constant_force_publisher.py
   scripts/export_baseline_artifacts.py
+  scripts/bearing_pf_stonefish_node.py
+  scripts/bearing_pf_shadow_node.py
+  scripts/inspect_segmentation_labels.py
+  scripts/inspect_rgb_pillars.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 

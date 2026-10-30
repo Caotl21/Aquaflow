@@ -1,0 +1,81 @@
+{
+  "status": "stalled",
+  "seed": 8,
+  "steps": 47,
+  "simulated_time_s": 16.45,
+  "wall_time_s": 0.8349227470000642,
+  "goal_distance_m": 7.2054757341777576,
+  "path_length_m": 2.5620000000000003,
+  "minimum_true_surface_clearance_m": 0.2604865163102407,
+  "obstacle_count": 12,
+  "discovered_count": 7,
+  "straight_reference_collision_count": 3,
+  "stops": 18,
+  "max_selected_known_map_risk": 0.044444444444444446,
+  "config": {
+    "seed": 8,
+    "particles": 1000,
+    "map_samples": 180,
+    "dt": 0.35,
+    "horizon": 2.8,
+    "max_steps": 220,
+    "robot_radius": 0.18,
+    "safety_margin": 0.1,
+    "risk_threshold": 0.08,
+    "fov_deg": 140.0,
+    "sensor_range": 12.0,
+    "noise_beta_deg": 0.6,
+    "noise_theta_deg": 0.35,
+    "goal_tolerance": 0.3,
+    "occlusion": true,
+    "corridor_half_width": 2.5
+  },
+  "target_errors": [
+    {
+      "id": "0",
+      "first_seen_step": 0,
+      "center_error_m": 0.0029740041487632952,
+      "diameter_error_m": 0.004009769486229109
+    },
+    {
+      "id": "3",
+      "first_seen_step": 0,
+      "center_error_m": 0.008153575807217317,
+      "diameter_error_m": 0.004981222083399572
+    },
+    {
+      "id": "5",
+      "first_seen_step": 0,
+      "center_error_m": 0.02760815876291784,
+      "diameter_error_m": 0.0013040346256953939
+    },
+    {
+      "id": "7",
+      "first_seen_step": 0,
+      "center_error_m": 0.5343986314576608,
+      "diameter_error_m": 0.057673588135106924
+    },
+    {
+      "id": "4",
+      "first_seen_step": 6,
+      "center_error_m": 1.7365741383559044,
+      "diameter_error_m": 0.1477653366827888
+    },
+    {
+      "id": "1",
+      "first_seen_step": 15,
+      "center_error_m": 0.12992870480602908,
+      "diameter_error_m": 0.02411984369705611
+    },
+    {
+      "id": "10",
+      "first_seen_step": 19,
+      "center_error_m": 2.929589490653525,
+      "diameter_error_m": 0.31537424383127266
+    }
+  ],
+  "stop_reasons": {
+    "no_feasible": 0,
+    "cost_prefers_hold": 18
+  }
+}

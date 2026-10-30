@@ -6,13 +6,14 @@
       empty_pool_control -> aquaflow_empty_pool_control.scn (camera-free)
       single_obstacle  -> aquaflow_single_obstacle.scn
       random_pillars   -> aquaflow_random_pillars.scn
+      bearing_pf_pillars -> aquaflow_bearing_pf_pillars.scn
       random_pillars + vehicle_model:=bluerov2 -> BlueROV2 variant
 
     The dictionary lookup intentionally makes roslaunch fail for an unknown
     scene name instead of silently selecting a fallback environment.
   -->
   <arg name="scene" default="empty_pool"
-       doc="AquaFlow course: empty_pool, empty_pool_control, single_obstacle or random_pillars"/>
+       doc="AquaFlow course: empty_pool, empty_pool_control, single_obstacle, random_pillars or bearing_pf_pillars"/>
   <arg name="simulation_rate" default="100.0"/>
   <arg name="vehicle_model" default="bricsbot"
        doc="Robot to include in random_pillars: bluerov2 or bricsbot"/>
@@ -25,7 +26,7 @@
   <arg name="scenario_path" default=""/>
 
   <arg name="scenario_file"
-       value="$(eval {'empty_pool': 'aquaflow_empty_pool.scn', 'empty_pool_control': 'aquaflow_empty_pool_control.scn', 'single_obstacle': 'aquaflow_single_obstacle.scn', 'random_pillars': {'bluerov2': 'aquaflow_random_pillars_bluerov2.scn', 'bricsbot': 'aquaflow_random_pillars.scn'}[arg('vehicle_model')]}[arg('scene')])"/>
+       value="$(eval {'empty_pool': 'aquaflow_empty_pool.scn', 'empty_pool_control': 'aquaflow_empty_pool_control.scn', 'single_obstacle': 'aquaflow_single_obstacle.scn', 'bearing_pf_pillars': 'aquaflow_bearing_pf_pillars.scn', 'random_pillars': {'bluerov2': 'aquaflow_random_pillars_bluerov2.scn', 'bricsbot': 'aquaflow_random_pillars.scn'}[arg('vehicle_model')]}[arg('scene')])"/>
 
   <include unless="$(arg headless)" file="$(find stonefish_ros)/launch/simulator.launch">
     <arg name="simulation_data"

@@ -1,0 +1,133 @@
+Panels:
+  - Class: rviz/Displays
+    Name: Displays
+    Property Tree Widget:
+      Expanded: []
+    Tree Height: 600
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Class: rviz/Grid
+      Name: World Grid
+      Enabled: true
+      Cell Size: 1
+      Plane: XY
+      Reference Frame: <Fixed Frame>
+      Color: 120; 120; 120
+      Alpha: 0.35
+    - Class: rviz/TF
+      Name: TF
+      Enabled: true
+      Show Names: true
+      Show Axes: true
+      Show Arrows: true
+      Marker Scale: 0.35
+    - Class: rviz/MarkerArray
+      Name: Bearing PF Debug
+      Enabled: true
+      Marker Topic: /bearing_pf/debug_markers
+      Queue Size: 20
+      Namespaces:
+        truth_obstacle: true
+        truth_inflated: true
+        truth_labels: true
+        camera_fov: true
+        camera_detections: true
+        camera_partial_sectors: true
+        camera_labels: true
+        pf_mean_circle: true
+        pf_inflated_circle: true
+        pf_estimated_obstacle: true
+        pf_estimated_inflated: true
+        pf_estimate_trail: true
+        pf_uncertainty_2sigma: true
+        pf_particles: true
+        pf_labels: true
+        robot_footprint: true
+        selected_plan: true
+        planner_diagnostics: true
+    - Class: rviz/Path
+      Name: PF Local Path
+      Enabled: true
+      Topic: /bearing_pf/local_path
+      Color: 0; 255; 0
+      Alpha: 1
+      Line Style: Lines
+      Line Width: 0.06
+      Buffer Length: 1
+    - Class: rviz/Path
+      Name: Actual Path
+      Enabled: true
+      Topic: /bearing_pf/actual_path
+      Color: 255; 0; 0
+      Alpha: 1
+      Line Style: Lines
+      Line Width: 0.08
+      Buffer Length: 1
+    - Class: rviz/Image
+      Name: Segmentation Display
+      Enabled: true
+      Image Topic: /bricsbot/bearing_segmentation/image_color
+      Transport Hint: raw
+      Queue Size: 2
+    - Class: rviz/Image
+      Name: RGB Camera
+      Enabled: false
+      Image Topic: /bricsbot/camera_front/image_color
+      Transport Hint: raw
+      Queue Size: 2
+    - Class: rviz/Image
+      Name: RGB Black Mask
+      Enabled: true
+      Image Topic: /bearing_pf/rgb_mask
+      Transport Hint: raw
+      Queue Size: 2
+    - Class: rviz/Odometry
+      Name: BricsBot Odometry
+      Enabled: false
+      Topic: /bricsbot/odometry
+      Keep: 50
+      Shape: Arrow
+      Covariance:
+        Orientation:
+          Value: false
+        Position:
+          Value: false
+        Value: false
+      Angle Tolerance: 0.1
+      Position Tolerance: 0.1
+    - Class: rviz/MarkerArray
+      Name: Truth vs Segmentation
+      Enabled: true
+      Marker Topic: /bearing_pf/shadow_markers
+      Queue Size: 2
+      Namespaces:
+        shadow_truth: true
+        shadow_segmentation: true
+  Enabled: true
+  Global Options:
+    Background Color: 48; 48; 48
+    Default Light: true
+    Fixed Frame: world_ned
+    Frame Rate: 30
+  Name: root
+  Tools:
+    - Class: rviz/Interact
+    - Class: rviz/SetGoal
+      Topic: /move_base_simple/goal
+  Views:
+    Current:
+      Class: rviz/Orbit
+      Distance: 8
+      Focal Point:
+        X: 0
+        Y: 0
+        Z: 1
+      Pitch: 1.35
+      Yaw: 0.0
+      Target Frame: <Fixed Frame>
+Window Geometry:
+  Height: 900
+  Width: 1450
+  X: 80
+  Y: 60
